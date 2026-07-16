@@ -35,6 +35,21 @@ function Get-TestNodeProcess {
     Select-Object -First 1
 }
 
+function Get-TestManagerProcess {
+  param([string]$InstallRoot)
+
+  $managerRoot = [System.IO.Path]::GetFullPath((Join-Path $InstallRoot "manager")).TrimEnd("\") + "\"
+  return Get-CimInstance Win32_Process -Filter "Name = 'HanakoBridgeManager.exe'" |
+    Where-Object {
+      -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+      [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith(
+        $managerRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+      )
+    } |
+    Select-Object -First 1
+}
+
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $package = Get-Content -LiteralPath (Join-Path $projectRoot "package.json") -Raw | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
@@ -89,7 +104,9 @@ try {
     "runtime\node.exe",
     "update.ps1",
     "manager-core.ps1",
+    "manager-command.ps1",
     "manager-ui.ps1",
+    "manager\HanakoBridgeManager.exe",
     "run-manager.vbs",
     "open-manager.ps1"
   )) {
@@ -99,6 +116,27 @@ try {
   }
   & (Join-Path $installRoot "runtime\node.exe") --version | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Bundled Node runtime did not start." }
+  $managerSmoke = Start-Process `
+    -FilePath (Join-Path $installRoot "manager\HanakoBridgeManager.exe") `
+    -ArgumentList @("--smoke-test", "--install-root", "`"$installRoot`"") `
+    -Wait `
+    -PassThru
+  if ($managerSmoke.ExitCode -ne 0) {
+    throw "Installed WinUI manager smoke test failed with code $($managerSmoke.ExitCode)."
+  }
+  Start-Process `
+    -FilePath (Join-Path $env:WINDIR "System32\wscript.exe") `
+    -ArgumentList @("//B", "//NoLogo", "`"$(Join-Path $installRoot 'run-manager.vbs')`"") `
+    -WindowStyle Hidden
+  $managerDeadline = (Get-Date).AddSeconds(20)
+  $managerProcess = $null
+  do {
+    Start-Sleep -Milliseconds 400
+    $managerProcess = Get-TestManagerProcess -InstallRoot $installRoot
+  } while ((Get-Date) -lt $managerDeadline -and -not $managerProcess)
+  if (-not $managerProcess) {
+    throw "Installed manager launcher did not open the WinUI manager."
+  }
 
   $mcpTaskName = "$taskPrefix MCP"
   $tunnelTaskName = "$taskPrefix Tunnel"

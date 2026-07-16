@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>HanakoBridgeManager</RootNamespace>
+    <AssemblyName>HanakoBridgeManager</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <UseWinUI>true</UseWinUI>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+  </ItemGroup>
+
+  <Target Name="CopyWinUIRuntimeResourcesToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUIRuntimeResource Include="$(TargetDir)App.xbf" />
+      <_WinUIRuntimeResource Include="$(TargetDir)MainWindow.xbf" />
+      <_WinUIRuntimeResource Include="$(TargetDir)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_WinUIRuntimeResource)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
+</Project>

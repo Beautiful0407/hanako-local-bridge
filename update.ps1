@@ -87,6 +87,18 @@ try {
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
   }
   Stop-BridgeProcesses -InstallRoot $installRoot -Runtime $runtime
+  $managerRoot = [System.IO.Path]::GetFullPath((Join-Path $installRoot "manager")).TrimEnd("\") + "\"
+  Get-CimInstance Win32_Process -Filter "Name = 'HanakoBridgeManager.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+      -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+      [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith(
+        $managerRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+      )
+    } |
+    ForEach-Object {
+      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
 
   Get-ChildItem -LiteralPath $stage -Force | ForEach-Object {
     if ($_.Name -notin @("config.json", "data", "logs")) {

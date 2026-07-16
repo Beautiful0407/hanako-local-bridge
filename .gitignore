@@ -3,5 +3,7 @@ logs/*.log
 .codegraph/
 build/
 release/
+manager-winui/bin/
+manager-winui/obj/
 *.backup-*.md
 CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md

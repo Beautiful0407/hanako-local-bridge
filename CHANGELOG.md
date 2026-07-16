@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-07-17
+
+- Replaced the primary Windows Forms manager with a modern WinUI 3 desktop application.
+- Kept `manager-core.ps1` as the authoritative backend and added a JSON-only `manager-command.ps1` boundary for the native UI.
+- Added overview, diagnostics, cloud-device, log, theme, repair, and service controls with stable UI Automation identifiers.
+- Added mixed UTF-8 and BOM-less UTF-16LE log decoding without NUL characters or mojibake.
+- Added a self-contained .NET 10 and Windows App SDK 2.3.1 manager build with XAML/PRI publish validation.
+- Updated the launcher to validate and open the WinUI manager, with automatic Windows Forms fallback.
+- Added installer and updater handling for a running native manager, plus installed-manager startup and smoke coverage.
+
 ## 1.2.1 - 2026-07-17
 
 - Added a Windows Forms manager for local service status, diagnostics, repair, cloud device listing, device claim, and log viewing.

@@ -1,6 +1,7 @@
 param(
   [string]$OutputDir = "",
-  [string]$NodePath = ""
+  [string]$NodePath = "",
+  [string]$PublishedAt = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +29,7 @@ $outputDir = [System.IO.Path]::GetFullPath($OutputDir)
 $buildRoot = Assert-ChildPath -Parent $projectRoot -Child (Join-Path $projectRoot "build\installer")
 $payloadRoot = Assert-ChildPath -Parent $buildRoot -Child (Join-Path $buildRoot "payload")
 $sfxRoot = Assert-ChildPath -Parent $buildRoot -Child (Join-Path $buildRoot "sfx")
+$managerPublishRoot = Assert-ChildPath -Parent $projectRoot -Child (Join-Path $projectRoot "build\manager-winui\win-x64")
 
 if (Test-Path -LiteralPath $buildRoot) {
   Remove-Item -LiteralPath $buildRoot -Recurse -Force
@@ -53,6 +55,7 @@ $rootFiles = @(
   "DEVELOPMENT_MANUAL.md",
   "install-background-service.ps1",
   "manager-core.ps1",
+  "manager-command.ps1",
   "manager-ui.ps1",
   "open-approval.ps1",
   "open-manager.ps1",
@@ -81,8 +84,20 @@ foreach ($file in $rootFiles) {
 Copy-Item -LiteralPath (Join-Path $projectRoot "lib") -Destination (Join-Path $payloadRoot "lib") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "cloud") -Destination (Join-Path $payloadRoot "cloud") -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot "scripts") -Destination (Join-Path $payloadRoot "scripts") -Recurse -Force
+& (Join-Path $projectRoot "build-manager-winui.ps1") -OutputDir $managerPublishRoot
+if ($LASTEXITCODE -ne 0) { throw "WinUI manager build failed." }
+Copy-Item -LiteralPath $managerPublishRoot -Destination (Join-Path $payloadRoot "manager") -Recurse -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $payloadRoot "runtime") | Out-Null
 Copy-Item -LiteralPath $NodePath -Destination (Join-Path $payloadRoot "runtime\node.exe") -Force
+
+foreach ($requiredManagerFile in @(
+  "manager-command.ps1",
+  "manager\HanakoBridgeManager.exe"
+)) {
+  if (-not (Test-Path -LiteralPath (Join-Path $payloadRoot $requiredManagerFile) -PathType Leaf)) {
+    throw "Installer payload is missing $requiredManagerFile"
+  }
+}
 
 & (Join-Path $payloadRoot "runtime\node.exe") --check (Join-Path $payloadRoot "server.cjs")
 if ($LASTEXITCODE -ne 0) { throw "Bundled Node runtime failed to validate server.cjs." }
@@ -92,11 +107,16 @@ Remove-Item -LiteralPath $releaseZip -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $payloadRoot "*") -DestinationPath $releaseZip -CompressionLevel Optimal
 $hash = (Get-FileHash -LiteralPath $releaseZip -Algorithm SHA256).Hash.ToLowerInvariant()
 $size = (Get-Item -LiteralPath $releaseZip).Length
+$publishedAtValue = if ([string]::IsNullOrWhiteSpace($PublishedAt)) {
+  (Get-Date).ToUniversalTime().ToString("o")
+} else {
+  ([DateTimeOffset]::Parse($PublishedAt)).ToUniversalTime().ToString("o")
+}
 $manifest = [ordered]@{
   schemaVersion = 1
   channel = "stable"
   version = $version
-  publishedAt = (Get-Date).ToUniversalTime().ToString("o")
+  publishedAt = $publishedAtValue
   packageUrl = Split-Path -Leaf $releaseZip
   sha256 = $hash
   size = $size
@@ -157,7 +177,7 @@ SourceFiles0=$sourceDirectory
 [System.IO.File]::WriteAllText($sedPath, $sed, [System.Text.Encoding]::ASCII)
 Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
 & (Join-Path $env:WINDIR "System32\iexpress.exe") /N /Q $sedPath
-$installerDeadline = (Get-Date).AddSeconds(120)
+$installerDeadline = (Get-Date).AddSeconds(300)
 $previousSize = -1
 $stableChecks = 0
 do {

@@ -1,6 +1,6 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.2.1`
+版本：`1.3.0`
 
 日期：`2026-07-17`
 
@@ -32,8 +32,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.2.1.exe
-release\HanakoLocalBridge-1.2.1-win-x64.zip
+release\HanakoLocalBridge-Setup-1.3.0.exe
+release\HanakoLocalBridge-1.3.0-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -52,9 +52,17 @@ Manifest：声明版本、ZIP 地址、大小和 SHA256
   config.json
   data\
   logs\
+  manager\
+    HanakoBridgeManager.exe
+    App.xbf
+    MainWindow.xbf
+    HanakoBridgeManager.pri
   runtime\node.exe
   lib\
   scripts\
+  manager-command.ps1
+  manager-core.ps1
+  manager-ui.ps1
   server.cjs
   run-local-fs-hidden.vbs
   run-local-fs-service.ps1
@@ -78,7 +86,7 @@ logs\
 
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.2.1.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.3.0.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。
@@ -93,9 +101,7 @@ data\
 logs\
 ```
 
-并更新管理器、后台服务脚本和自带 Node 运行时。
-5. 在这台电脑打开 Hana 网页并输入网页访问密钥。
-6. 网页自动认领当前电脑。
+并更新 WinUI 3 管理器、WinForms 回退管理器、后台服务脚本和自带 Node 运行时。目标电脑不需要另装 .NET 或 Windows App Runtime。
 7. 运行 `status.ps1`，确认 `cloud.status` 为 `active`。
 
 默认值：
@@ -289,6 +295,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\update.ps1 `
 校验 SHA256
 校验 ZIP 内 package.json 版本
 停止当前任务和进程
+停止安装目录中正在运行的 WinUI 管理器
 替换程序与自带 Node
 保留 config/data/logs
 重新注册并启动隐藏任务
@@ -346,6 +353,16 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 
 ## 12. 开发与发布验证
 
+构建机要求：
+
+```text
+Node.js 22+
+.NET SDK 10
+Windows 10 2004 或更高版本
+```
+
+目标电脑不需要预装 Node.js、.NET 或 Windows App Runtime；正式包同时携带 Node 和 WinUI/.NET 自包含运行时。
+
 完整功能测试：
 
 ```powershell
@@ -355,6 +372,7 @@ npm.cmd test
 构建：
 
 ```powershell
+npm.cmd run build:manager
 npm.cmd run build:installer
 ```
 
@@ -370,6 +388,10 @@ npm.cmd run test:installer
 生产任务状态不变化
 EXE 能安装到临时目录
 自带 Node 可运行
+WinUI 管理器包含 EXE、XBF 和 PRI
+WinUI 管理器 --smoke-test 返回 0
+run-manager.vbs 能启动原生管理器
+运行中的原生管理器不会阻塞覆盖更新
 任务动作使用 wscript.exe
 PowerShell watchdog 带 WindowStyle Hidden
 强杀 Node 后 PID 自动更换且 health 恢复

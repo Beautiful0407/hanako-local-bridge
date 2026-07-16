@@ -1,0 +1,61 @@
+param(
+  [ValidateSet("snapshot", "action", "cloud-query", "logs", "log-tail")]
+  [string]$Operation = "snapshot",
+  [string]$InstallRoot = $PSScriptRoot,
+  [string]$ConfigPath = ""
+)
+
+$ErrorActionPreference = "Stop"
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
+
+. (Join-Path $InstallRoot "manager-core.ps1")
+
+try {
+  $result = switch ($Operation) {
+    "snapshot" {
+      Get-HanakoBridgeManagerSnapshot -InstallRoot $InstallRoot -ConfigPath $ConfigPath
+    }
+    "action" {
+      $action = [string]$env:HANA_MANAGER_ACTION
+      if ($action -notin @("start", "stop", "restart", "repair")) {
+        throw "Invalid manager action."
+      }
+      Invoke-HanakoBridgeManagerAction `
+        -Action $action `
+        -InstallRoot $InstallRoot `
+        -ConfigPath $ConfigPath
+    }
+    "cloud-query" {
+      $arguments = @{
+        BaseUrl = [string]$env:HANA_MANAGER_BASE_URL
+        AccessKey = [string]$env:HANA_MANAGER_ACCESS_KEY
+        InstallRoot = $InstallRoot
+        ConfigPath = $ConfigPath
+      }
+      if ([string]$env:HANA_MANAGER_CLAIM -eq "1") {
+        $arguments.ClaimCurrentDevice = $true
+      }
+      Invoke-HanakoBridgeCloudQuery @arguments
+    }
+    "logs" {
+      [pscustomobject]@{
+        logs = @(Get-HanakoBridgeLogFiles -InstallRoot $InstallRoot)
+      }
+    }
+    "log-tail" {
+      [pscustomobject]@{
+        content = Get-HanakoBridgeLogTail -Path ([string]$env:HANA_MANAGER_LOG_PATH)
+      }
+    }
+  }
+
+  [Console]::Out.WriteLine(($result | ConvertTo-Json -Depth 12 -Compress))
+  exit 0
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+} finally {
+  Remove-Item Env:HANA_MANAGER_ACCESS_KEY -ErrorAction SilentlyContinue
+}

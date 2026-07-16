@@ -1,6 +1,6 @@
 {
   "name": "hanako-local-fs-mcp-bridge",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "description": "Windows local filesystem and PowerShell/Python execution bridge for Hana Agent",
   "type": "commonjs",
@@ -14,6 +14,7 @@
     "test:full-trust": "node tests/full-trust.test.cjs",
     "test:recovery": "node tests/recovery.test.cjs",
     "test:device-router": "node tests/device-router.test.cjs",
+    "build:manager": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./build-manager-winui.ps1",
     "build:installer": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./build-installer.ps1",
     "test:installer": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./tests/installer-smoke.ps1",
     "service:install": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./install-background-service.ps1",

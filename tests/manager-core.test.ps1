@@ -106,6 +106,7 @@ try {
   Assert-Manager ($snapshot.tasks.mcpState -eq "Missing") "Missing scheduled task was not detected."
   Assert-Manager ($snapshot.identity.credentialPresent -eq $true) "Credential presence was not detected."
   Assert-Manager ($snapshot.identity.PSObject.Properties.Name -notcontains "credential") "Snapshot exposed a credential field."
+  Assert-Manager ($snapshot.processes -is [array]) "Snapshot processes must always be an array."
   Assert-Manager (
     @($snapshot.checks | Where-Object { $_.code -eq "mcp_task" -and $_.status -eq "error" }).Count -eq 1
   ) "Scheduled task diagnostic is missing."
@@ -116,6 +117,25 @@ try {
   $serialized = $snapshot | ConvertTo-Json -Depth 10
   Assert-Manager (-not $serialized.Contains($secret)) "Serialized snapshot leaked the test credential."
   Assert-Manager (-not $serialized.Contains("privateKey")) "Serialized snapshot exposed private key material."
+
+  $utf16Log = Join-Path $logDir "utf16-no-bom.log"
+  [System.IO.File]::WriteAllBytes(
+    $utf16Log,
+    [System.Text.Encoding]::Unicode.GetBytes("first`r`nsecond`r`nthird")
+  )
+  $logTail = Get-HanakoBridgeLogTail -Path $utf16Log -Lines 2
+  Assert-Manager ($logTail -eq "second`r`nthird") "UTF-16LE log detection failed."
+  Assert-Manager (-not $logTail.Contains([char]0)) "Log tail contains NUL characters."
+
+  $mixedLog = Join-Path $logDir "mixed-encoding.log"
+  $utf8Part = [System.Text.UTF8Encoding]::new($false).GetBytes("utf8-first`n")
+  $utf16Part = [System.Text.Encoding]::Unicode.GetBytes("utf16-second`r`n")
+  $mixedBytes = [byte[]]::new($utf8Part.Length + $utf16Part.Length)
+  [System.Array]::Copy($utf8Part, 0, $mixedBytes, 0, $utf8Part.Length)
+  [System.Array]::Copy($utf16Part, 0, $mixedBytes, $utf8Part.Length, $utf16Part.Length)
+  [System.IO.File]::WriteAllBytes($mixedLog, $mixedBytes)
+  $mixedTail = Get-HanakoBridgeLogTail -Path $mixedLog -Lines 2
+  Assert-Manager ($mixedTail -eq "utf8-first`r`nutf16-second") "Mixed log encoding detection failed."
 
   Write-Host "manager core tests passed"
 } finally {

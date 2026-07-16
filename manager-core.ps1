@@ -151,7 +151,7 @@ function Get-HanakoBridgeManagerSnapshot {
     $checks.Add((New-HanakoBridgeCheck -Code "hidden_launcher" -Status "warning" -Detail "Task does not use the hidden launcher"))
   }
 
-  $bridgeProcesses = Get-HanakoBridgeProcessList -InstallRoot $root
+  $bridgeProcesses = @(Get-HanakoBridgeProcessList -InstallRoot $root)
   $nodeProcess = $bridgeProcesses |
     Where-Object { $_.Name -eq "node.exe" -and [string]$_.CommandLine -like "*server.cjs*" } |
     Select-Object -First 1
@@ -303,7 +303,7 @@ function Get-HanakoBridgeManagerSnapshot {
       hiddenLauncher = $hiddenLauncher
       mcpAction = $mcpAction
     }
-    processes = $bridgeProcesses
+    processes = @($bridgeProcesses)
     checks = @($checks)
     error = ""
   }
@@ -454,6 +454,110 @@ function Get-HanakoBridgeLogFiles {
   )
 }
 
+function Test-HanakoUtf16LeLogLine {
+  param(
+    [Parameter(Mandatory = $true)][byte[]]$Bytes,
+    [Parameter(Mandatory = $true)][int]$Offset
+  )
+
+  $remaining = $Bytes.Length - $Offset
+  if ($remaining -lt 4) { return $false }
+  $sampleLength = [Math]::Min($remaining, 256)
+  $utf8Break = -1
+  $utf16Break = -1
+  for ($index = 0; $index -lt $sampleLength; $index++) {
+    $position = $Offset + $index
+    if ($Bytes[$position] -ne 0x0A) { continue }
+
+    if (
+      $index % 2 -eq 0 -and
+      $position + 1 -lt $Bytes.Length -and
+      $Bytes[$position + 1] -eq 0x00
+    ) {
+      $utf16Break = $index
+      break
+    }
+
+    $utf8Break = $index
+    break
+  }
+  if ($utf8Break -ge 0) { return $false }
+  if ($utf16Break -ge 0) { return $true }
+
+  $firstZero = -1
+  for ($index = 0; $index -lt $sampleLength; $index++) {
+    if ($Bytes[$Offset + $index] -eq 0) {
+      $firstZero = $index
+      break
+    }
+  }
+  if ($firstZero -lt 0) { return $false }
+
+  $pairs = [Math]::Min([Math]::Floor($sampleLength / 2), 32)
+  if ($pairs -lt 4) { return $false }
+  $highZeros = 0
+  $lowZeros = 0
+  for ($pair = 0; $pair -lt $pairs; $pair++) {
+    if ($Bytes[$Offset + ($pair * 2)] -eq 0) { $lowZeros++ }
+    if ($Bytes[$Offset + ($pair * 2) + 1] -eq 0) { $highZeros++ }
+  }
+  return $highZeros -ge [Math]::Ceiling($pairs * 0.35) -and $lowZeros -le [Math]::Floor($pairs * 0.1)
+}
+
+function ConvertFrom-HanakoMixedLogBytes {
+  param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+
+  if ($Bytes.Length -eq 0) { return "" }
+  if ($Bytes.Length -ge 2 -and $Bytes[0] -eq 0xFF -and $Bytes[1] -eq 0xFE) {
+    return [System.Text.Encoding]::Unicode.GetString($Bytes, 2, $Bytes.Length - 2)
+  }
+  if ($Bytes.Length -ge 2 -and $Bytes[0] -eq 0xFE -and $Bytes[1] -eq 0xFF) {
+    return [System.Text.Encoding]::BigEndianUnicode.GetString($Bytes, 2, $Bytes.Length - 2)
+  }
+  if (
+    $Bytes.Length -ge 3 -and
+    $Bytes[0] -eq 0xEF -and
+    $Bytes[1] -eq 0xBB -and
+    $Bytes[2] -eq 0xBF
+  ) {
+    return [System.Text.UTF8Encoding]::new($false, $false).GetString($Bytes, 3, $Bytes.Length - 3)
+  }
+
+  $utf8 = [System.Text.UTF8Encoding]::new($false, $false)
+  $builder = [System.Text.StringBuilder]::new()
+  $position = 0
+  while ($position -lt $Bytes.Length) {
+    $utf16 = Test-HanakoUtf16LeLogLine -Bytes $Bytes -Offset $position
+    $end = $position
+    if ($utf16) {
+      while ($end + 1 -lt $Bytes.Length) {
+        if ($Bytes[$end] -eq 0x0A -and $Bytes[$end + 1] -eq 0x00) {
+          $end += 2
+          break
+        }
+        $end += 2
+      }
+      $count = [Math]::Min($Bytes.Length, $end) - $position
+      if ($count % 2 -ne 0) { $count-- }
+      if ($count -gt 0) {
+        [void]$builder.Append([System.Text.Encoding]::Unicode.GetString($Bytes, $position, $count))
+      }
+      $position += [Math]::Max(1, $count)
+    } else {
+      while ($end -lt $Bytes.Length) {
+        $end++
+        if ($Bytes[$end - 1] -eq 0x0A) { break }
+      }
+      $count = $end - $position
+      if ($count -gt 0) {
+        [void]$builder.Append($utf8.GetString($Bytes, $position, $count))
+      }
+      $position = $end
+    }
+  }
+  return $builder.ToString()
+}
+
 function Get-HanakoBridgeLogTail {
   param(
     [Parameter(Mandatory = $true)][string]$Path,
@@ -461,5 +565,33 @@ function Get-HanakoBridgeLogTail {
   )
 
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return "" }
-  (Get-Content -LiteralPath $Path -Tail ([Math]::Max(1, $Lines)) -ErrorAction SilentlyContinue) -join [Environment]::NewLine
+  $share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+  $stream = [System.IO.FileStream]::new(
+    $Path,
+    [System.IO.FileMode]::Open,
+    [System.IO.FileAccess]::Read,
+    $share
+  )
+  try {
+    $bytes = [byte[]]::new([int]$stream.Length)
+    $read = 0
+    while ($read -lt $bytes.Length) {
+      $count = $stream.Read($bytes, $read, $bytes.Length - $read)
+      if ($count -le 0) { break }
+      $read += $count
+    }
+    if ($read -lt $bytes.Length) {
+      $bytes = $bytes[0..([Math]::Max(0, $read - 1))]
+    }
+  } finally {
+    $stream.Dispose()
+  }
+  if ($bytes.Length -eq 0) { return "" }
+  $text = ConvertFrom-HanakoMixedLogBytes -Bytes $bytes
+  $trimmedText = $text.TrimEnd("`r", "`n", [char]0)
+  if ([string]::IsNullOrEmpty($trimmedText)) { return "" }
+  $allLines = [System.Text.RegularExpressions.Regex]::Split($trimmedText, "\r\n|\n|\r")
+  $take = [Math]::Max(1, $Lines)
+  if ($allLines.Length -le $take) { return ($allLines -join [Environment]::NewLine) }
+  $allLines[($allLines.Length - $take)..($allLines.Length - 1)] -join [Environment]::NewLine
 }

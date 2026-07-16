@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## v1.2.1 图形化管理器
+## v1.3.0 WinUI 3 图形化管理器
 
-安装或覆盖升级 `HanakoLocalBridge-Setup-1.2.1.exe` 后，从开始菜单打开：
+安装或覆盖升级 `HanakoLocalBridge-Setup-1.3.0.exe` 后，从开始菜单打开：
 
 ```text
 Hanako Local Bridge
@@ -24,6 +24,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
 云端设备：用 Hana 网页访问密钥查询设备或认领当前电脑
 日志：读取本机 logs 目录中的最新运行记录
 ```
+
+管理器使用 WinUI 3 原生窗口，支持浅色/深色主题和 5 秒自动状态刷新。启动器会先验证原生管理器；如果原生文件缺失或无法启动，则自动打开旧 WinForms 回退界面。
 
 多电脑排查：
 
@@ -158,7 +160,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
 
 ## 当前运行方式：完全信任
 
-当前部署版本为 `1.2.0`，后台服务启用：
+当前部署版本为 `1.3.0`，后台服务启用：
 
 ```text
 LOCAL_AGENT_TRUST_MODE=full
@@ -194,7 +196,7 @@ local_fs.access_status: disabled
 ## 1. 当前版本
 
 ```text
-Bridge version: 1.2.0
+Bridge version: 1.3.0
 Windows MCP:    http://127.0.0.1:8787/mcp
 Approval UI:   http://127.0.0.1:8788/
 Cloud WebSocket: ws://154.201.69.202/local-bridge/connect

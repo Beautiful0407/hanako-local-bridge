@@ -1,10 +1,19 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
-## v1.2.1 Windows 图形管理器
+## v1.3.0 WinUI 3 Windows 图形管理器
 
-管理器拆分为两层：
+管理器使用“原生界面 + JSON 命令层 + PowerShell 核心”三层结构：
 
 ```text
+manager-winui\
+  -> .NET 10 / WinUI 3 / Windows App SDK 2.3.1
+  -> 概览、诊断与修复、云端设备、日志、深浅色主题
+  -> 5 秒自动刷新
+
+manager-command.ps1
+  -> 把 snapshot / action / cloud-query / logs / log-tail 转成 JSON
+  -> 只通过子进程环境变量接收网页登录密钥
+
 manager-core.ps1
   -> 读取运行时配置
   -> 检查计划任务、隐藏启动器和服务进程
@@ -14,19 +23,40 @@ manager-core.ps1
   -> 临时登录 Hana 并查询或认领设备
 
 manager-ui.ps1
-  -> WinForms 概览、诊断与修复、云端设备、日志
-  -> 5 秒自动刷新
-  -> 不持久化网页登录密钥
+  -> 旧 WinForms 回退界面
 ```
 
-隐藏启动链：
+启动链：
 
 ```text
 开始菜单快捷方式
   -> wscript.exe //B run-manager.vbs
-    -> powershell.exe -WindowStyle Hidden -File manager-ui.ps1
-      -> WinForms 窗口
+    -> manager\HanakoBridgeManager.exe --smoke-test
+      -> 成功：启动 WinUI 3 管理器
+      -> 失败：隐藏启动 manager-ui.ps1
 ```
+
+WinUI 项目使用：
+
+```text
+TargetFramework: net10.0-windows10.0.22621.0
+TargetPlatformMinVersion: Windows 10 2004
+RuntimeIdentifier: win-x64
+WindowsPackageType: None
+SelfContained: true
+WindowsAppSDKSelfContained: true
+```
+
+`build-manager-winui.ps1` 自动优先选择 `%USERPROFILE%\.dotnet10\dotnet.exe`，执行 restore 和 publish，并验证：
+
+```text
+HanakoBridgeManager.exe
+App.xbf
+MainWindow.xbf
+HanakoBridgeManager.pri
+```
+
+Windows App SDK 发布阶段默认可能漏复制应用 XBF/PRI；`HanakoBridgeManager.csproj` 的 `CopyWinUIRuntimeResourcesToPublish` target 会把这三项补入发布目录。发布后必须执行 `--smoke-test`，不能只检查 EXE 是否存在。
 
 安全边界：
 
@@ -34,17 +64,21 @@ manager-ui.ps1
 cloud-identity.json 只在本机读取
 manager snapshot 只暴露 credentialPresent / claimTokenPresent
 诊断报告不包含 credential、claimToken、privateKey
-网页登录密钥只保存在 WinForms 密码框内，并在请求结束后清空
+网页登录密钥只保存在 WinUI PasswordBox 和子进程环境变量内
+请求结束后清空 PasswordBox；密钥不进入命令行、配置、日志或诊断报告
 ```
+
+日志读取兼容历史文件中混合存在的 UTF-8 与无 BOM UTF-16LE 片段。`ConvertFrom-HanakoMixedLogBytes` 按行判断编码，统一换行并移除尾部 NUL，避免 WinUI 日志框出现空白或乱码。
 
 测试入口：
 
 ```powershell
 npm.cmd run test:manager
+npm.cmd run build:manager
 npm.cmd test
 ```
 
-`tests/manager-core.test.ps1` 使用临时目录、随机端口和不存在的计划任务，验证 URL 规范化、离线诊断、凭证存在状态和秘密不泄露。
+`tests/manager-core.test.ps1` 使用临时目录、随机端口和不存在的计划任务，验证 URL 规范化、离线诊断、固定数组 JSON 结构、凭证存在状态、混合日志编码和秘密不泄露。`tests/installer-smoke.ps1` 还会启动安装后的 WinUI 管理器，并验证运行中的管理器不会阻塞覆盖升级。
 
 ## v1.2.0 主动云端连接
 

@@ -229,6 +229,19 @@ if ($migrationSource) {
   Start-Sleep -Seconds 2
 }
 
+$installedManagerRoot = [System.IO.Path]::GetFullPath((Join-Path $installDir "manager")).TrimEnd("\") + "\"
+Get-CimInstance Win32_Process -Filter "Name = 'HanakoBridgeManager.exe'" -ErrorAction SilentlyContinue |
+  Where-Object {
+    -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+    [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith(
+      $installedManagerRoot,
+      [System.StringComparison]::OrdinalIgnoreCase
+    )
+  } |
+  ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+
 $stage = Join-Path $env:TEMP "HanakoLocalBridgeInstall-$PID-$([Guid]::NewGuid().ToString('N'))"
 try {
   New-Item -ItemType Directory -Force -Path $stage | Out-Null
@@ -238,8 +251,10 @@ try {
     "package.json",
     "bridge-common.ps1",
     "manager-core.ps1",
+    "manager-command.ps1",
     "manager-ui.ps1",
     "run-manager.vbs",
+    "manager\HanakoBridgeManager.exe",
     "runtime\node.exe"
   )) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage $required))) {
