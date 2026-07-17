@@ -233,7 +233,15 @@ $stage = Join-Path $env:TEMP "HanakoLocalBridgeInstall-$PID-$([Guid]::NewGuid().
 try {
   New-Item -ItemType Directory -Force -Path $stage | Out-Null
   Expand-Archive -LiteralPath $packagePath -DestinationPath $stage -Force
-  foreach ($required in @("server.cjs", "package.json", "bridge-common.ps1", "runtime\node.exe")) {
+  foreach ($required in @(
+    "server.cjs",
+    "package.json",
+    "bridge-common.ps1",
+    "manager-core.ps1",
+    "manager-ui.ps1",
+    "run-manager.vbs",
+    "runtime\node.exe"
+  )) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage $required))) {
       throw "Installer payload is invalid; missing $required"
     }
@@ -327,6 +335,16 @@ try {
     New-ItemProperty -Path $uninstallKey -Name UninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallKey -Name QuietUninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
+
+    $startMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "Hanako Local Bridge"
+    New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
+    $shortcutPath = Join-Path $startMenuDir "Hanako Local Bridge Manager.lnk"
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = Join-Path $env:WINDIR "System32\wscript.exe"
+    $shortcut.Arguments = "//B //NoLogo `"$installDir\run-manager.vbs`""
+    $shortcut.WorkingDirectory = $installDir
+    $shortcut.Description = "Manage, diagnose, repair, and claim Hanako Local Bridge devices"
+    $shortcut.Save()
   }
 
   Write-Host ""
@@ -334,6 +352,7 @@ try {
   Write-Host "Install directory: $installDir"
   if ($migrationSource) { Write-Host "Migrated persistent state from: $migrationSource" }
   Write-Host "Use status.ps1 to inspect the background service."
+  Write-Host "Use Hanako Local Bridge Manager from the Start menu for graphical diagnostics."
   if ($Gui) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show(

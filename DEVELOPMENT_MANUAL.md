@@ -1,5 +1,51 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
+## v1.2.1 Windows 图形管理器
+
+管理器拆分为两层：
+
+```text
+manager-core.ps1
+  -> 读取运行时配置
+  -> 检查计划任务、隐藏启动器和服务进程
+  -> 请求本地 health / client-identity
+  -> 汇总 active / pending_claim / offline
+  -> 执行 start / stop / restart / repair
+  -> 临时登录 Hana 并查询或认领设备
+
+manager-ui.ps1
+  -> WinForms 概览、诊断与修复、云端设备、日志
+  -> 5 秒自动刷新
+  -> 不持久化网页登录密钥
+```
+
+隐藏启动链：
+
+```text
+开始菜单快捷方式
+  -> wscript.exe //B run-manager.vbs
+    -> powershell.exe -WindowStyle Hidden -File manager-ui.ps1
+      -> WinForms 窗口
+```
+
+安全边界：
+
+```text
+cloud-identity.json 只在本机读取
+manager snapshot 只暴露 credentialPresent / claimTokenPresent
+诊断报告不包含 credential、claimToken、privateKey
+网页登录密钥只保存在 WinForms 密码框内，并在请求结束后清空
+```
+
+测试入口：
+
+```powershell
+npm.cmd run test:manager
+npm.cmd test
+```
+
+`tests/manager-core.test.ps1` 使用临时目录、随机端口和不存在的计划任务，验证 URL 规范化、离线诊断、凭证存在状态和秘密不泄露。
+
 ## v1.2.0 主动云端连接
 
 `v1.2.0` 的默认传输从 SSH 反向隧道切换为 WebSocket：

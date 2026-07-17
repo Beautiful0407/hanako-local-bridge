@@ -1,6 +1,6 @@
 {
   "name": "hanako-local-fs-mcp-bridge",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Windows local filesystem and PowerShell/Python execution bridge for Hana Agent",
   "type": "commonjs",
@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server.cjs",
     "check": "node --check server.cjs && node --check cloud/device-router.cjs && node --check lib/access-control.cjs && node --check lib/approval-server.cjs && node --check lib/cloud-connector.cjs && node --check lib/device-identity.cjs && node --check lib/execution-control.cjs && node --check lib/execution-tools.cjs && node --check lib/job-runner.cjs && node --check lib/json-store.cjs && node --check lib/log-utils.cjs && node --check lib/runtime-config.cjs && node --check lib/tools.cjs",
-    "test": "npm run check && node tests/runtime-config.test.cjs && node tests/cloud-connector.test.cjs && node tests/integration.test.cjs && node tests/full-trust.test.cjs && node tests/recovery.test.cjs && node tests/device-router.test.cjs",
+    "test": "npm run check && npm run test:manager && node tests/runtime-config.test.cjs && node tests/cloud-connector.test.cjs && node tests/integration.test.cjs && node tests/full-trust.test.cjs && node tests/recovery.test.cjs && node tests/device-router.test.cjs",
+    "test:manager": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./tests/manager-core.test.ps1",
     "test:integration": "node tests/integration.test.cjs",
     "test:full-trust": "node tests/full-trust.test.cjs",
     "test:recovery": "node tests/recovery.test.cjs",

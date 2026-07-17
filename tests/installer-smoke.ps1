@@ -83,7 +83,16 @@ try {
     throw "Installer exited with code $($installerProcess.ExitCode)."
   }
 
-  foreach ($required in @("server.cjs", "config.json", "runtime\node.exe", "update.ps1")) {
+  foreach ($required in @(
+    "server.cjs",
+    "config.json",
+    "runtime\node.exe",
+    "update.ps1",
+    "manager-core.ps1",
+    "manager-ui.ps1",
+    "run-manager.vbs",
+    "open-manager.ps1"
+  )) {
     if (-not (Test-Path -LiteralPath (Join-Path $installRoot $required))) {
       throw "Installed file is missing: $required"
     }

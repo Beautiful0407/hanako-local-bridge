@@ -1,5 +1,40 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
+## v1.2.1 图形化管理器
+
+安装或覆盖升级 `HanakoLocalBridge-Setup-1.2.1.exe` 后，从开始菜单打开：
+
+```text
+Hanako Local Bridge
+  -> Hanako Local Bridge Manager
+```
+
+也可以直接运行：
+
+```powershell
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
+  "$env:LOCALAPPDATA\HanakoLocalBridge\open-manager.ps1"
+```
+
+四个页面：
+
+```text
+概览：当前电脑、MCP、任务、进程、WebSocket 和设备凭证
+诊断与修复：检测所有依赖并执行启动、停止、重启或修复
+云端设备：用 Hana 网页访问密钥查询设备或认领当前电脑
+日志：读取本机 logs 目录中的最新运行记录
+```
+
+多电脑排查：
+
+1. 在每台电脑分别安装本地桥；网页本身不会把一台电脑的本地服务复制到另一台电脑。
+2. 在第二台电脑打开管理器。
+3. `offline` 时点击 `检测并修复`。
+4. `pending_claim` 时进入 `云端设备`，输入 Hana 网页访问密钥，点击 `登录并认领本机`。
+5. 变为 `active` 后点击 `查询云端设备`，云端列表应同时显示两台电脑。
+
+管理器不会保存 Hana 网页访问密钥。诊断报告只包含 `credentialPresent` 和 `claimTokenPresent`，不会包含设备凭证、认领令牌、私钥或网页登录密钥。
+
 ## v1.2.0 当前运行方式
 
 正式安装目录：

@@ -2,7 +2,34 @@
 
 云端 Hana Agent 使用的 Windows 本地文件读写与 PowerShell/Python 执行桥。
 
-## 当前生效配置：v1.2.0 云端 WebSocket 安装版
+## 当前生效配置：v1.2.1 图形管理版
+
+`v1.2.1` 在主动 WebSocket 架构上增加了 Windows 图形化管理器。安装后可从开始菜单打开：
+
+```text
+开始菜单
+  -> Hanako Local Bridge
+    -> Hanako Local Bridge Manager
+```
+
+管理器提供：
+
+```text
+概览：设备 ID、版本、端口、任务、进程和云端状态
+诊断与修复：检测、启动、停止、重启、一键修复、复制安全诊断报告
+云端设备：查询所有电脑、登录并认领本机
+日志：查看 watchdog、MCP 和隧道日志
+```
+
+如果 Hana 网页只显示一台电脑，先在缺失的电脑安装 `v1.2.1`，打开管理器检查云端状态：
+
+```text
+active：已经认领并在线
+pending_claim：已连接，输入 Hana 网页访问密钥并点击“登录并认领本机”
+offline：未连接，点击“检测并修复”
+```
+
+访问密钥只用于当次登录和查询，不会写入 `config.json`、日志或诊断报告。
 
 `v1.2.0` 改为由 Windows 本地桥主动连接云端 Hana，不再要求每台电脑生成 SSH 密钥、上传公钥或分配反向隧道端口。
 
@@ -23,7 +50,7 @@
 当前版本组合：
 
 ```text
-Windows Bridge: 1.2.0
+Windows Bridge: 1.2.1
 Cloud Hana:     0.401.11
 Device Router: 0.8.0
 ```
@@ -50,8 +77,8 @@ Device Router: 0.8.0
 发布文件：
 
 ```text
-release\HanakoLocalBridge-Setup-1.2.0.exe
-release\HanakoLocalBridge-1.2.0-win-x64.zip
+release\HanakoLocalBridge-Setup-1.2.1.exe
+release\HanakoLocalBridge-1.2.1-win-x64.zip
 release\update-manifest.json
 ```
 

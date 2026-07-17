@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 - 2026-07-17
+
+- Added a Windows Forms manager for local service status, diagnostics, repair, cloud device listing, device claim, and log viewing.
+- Added hidden manager startup through `wscript.exe` and a Start menu shortcut.
+- Added explicit `active`, `pending_claim`, `offline`, missing-task, missing-process, and missing-credential diagnostics.
+- Added start, stop, restart, and detect-and-repair actions without opening a PowerShell window.
+- Added temporary Hana web login for device queries and claim; the access key is never persisted.
+- Added manager-core tests that verify offline diagnostics and prevent credentials or private key material from entering reports.
+- Added manager files and checks to the Windows installer and isolated installer smoke test.
+
 ## 1.2.0 - 2026-07-17
 
 - Replaced per-device SSH reverse tunnels with an active cloud WebSocket connection.

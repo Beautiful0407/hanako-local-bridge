@@ -1,6 +1,6 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.2.0`
+版本：`1.2.1`
 
 日期：`2026-07-17`
 
@@ -16,6 +16,7 @@ Windows 本地桥负责：
 网页登录后自动认领当前电脑
 断线后自动恢复
 后台运行且不弹出 PowerShell 窗口
+提供图形化检测、修复、设备认领和日志查看
 ```
 
 正式安装不依赖桌面源码目录，也不要求目标电脑预装 Node.js。
@@ -31,8 +32,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.2.0.exe
-release\HanakoLocalBridge-1.2.0-win-x64.zip
+release\HanakoLocalBridge-Setup-1.2.1.exe
+release\HanakoLocalBridge-1.2.1-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -77,10 +78,22 @@ logs\
 
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.2.0.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.2.1.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。
+5. 从开始菜单打开 `Hanako Local Bridge Manager`。
+6. 在 `云端设备` 页面输入 Hana 网页访问密钥并认领本机。
+
+旧版本可以直接覆盖安装。安装器会保留：
+
+```text
+config.json
+data\
+logs\
+```
+
+并更新管理器、后台服务脚本和自带 Node 运行时。
 5. 在这台电脑打开 Hana 网页并输入网页访问密钥。
 6. 网页自动认领当前电脑。
 7. 运行 `status.ps1`，确认 `cloud.status` 为 `active`。
