@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "defaultDeviceId": "laptop-hl78935t",
+  "devices": [
+    {
+      "id": "laptop-hl78935t",
+      "name": "LAPTOP-HL78935T",
+      "url": "http://127.0.0.1:18787/mcp",
+      "healthUrl": "http://127.0.0.1:18787/health",
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "device": {
+    "id": "my-windows-pc",
+    "name": "My Windows PC"
+  },
+  "filesystem": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "approvalPort": 8788,
+    "trustMode": "full",
+    "allowChatAuthorization": false,
+    "chatGrantMinutes": 120,
+    "roots": [
+      {
+        "name": "MyFiles",
+        "path": "%USERPROFILE%",
+        "mode": "read_write"
+      },
+      {
+        "name": "HanakoLocalBridge",
+        "path": "%INSTALLDIR%",
+        "mode": "read"
+      }
+    ]
+  },
+  "storage": {
+    "dataDir": "data",
+    "logDir": "logs"
+  },
+  "cloud": {
+    "enabled": true,
+    "url": "ws://154.201.69.202/local-bridge/connect",
+    "reconnectMinSeconds": 3,
+    "reconnectMaxSeconds": 60,
+    "heartbeatSeconds": 25
+  },
+  "tunnel": {
+    "enabled": false,
+    "server": "154.201.69.202",
+    "user": "root",
+    "localHost": "127.0.0.1",
+    "localPort": 8787,
+    "remoteHost": "127.0.0.1",
+    "remotePort": 18787,
+    "identityFile": ""
+  },
+  "service": {
+    "taskPrefix": "Hanako Local FS",
+    "restartDelaySeconds": 3,
+    "tunnelRetryMinSeconds": 5,
+    "tunnelRetryMaxSeconds": 60,
+    "tunnelHealthSeconds": 30
+  },
+  "update": {
+    "manifest": "",
+    "channel": "stable"
+  }
+}

@@ -1,0 +1,19 @@
+[Unit]
+Description=Hanako Local Windows Device Router
+After=network-online.target hanako-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hanako-local-device-router
+Environment=HANA_DEVICE_ROUTER_CONFIG=/opt/hanako-local-device-router/devices.json
+Environment=HANA_DEVICE_ROUTER_QUEUE=/opt/hanako-local-device-router/offline-queue.json
+Environment=HANA_DEVICE_ROUTER_HOST=127.0.0.1
+Environment=HANA_DEVICE_ROUTER_PORT=18786
+ExecStart=/usr/bin/node /opt/hanako-local-device-router/device-router.cjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

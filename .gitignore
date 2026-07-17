@@ -1,0 +1,7 @@
+data/
+logs/*.log
+.codegraph/
+build/
+release/
+*.backup-*.md
+CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md
