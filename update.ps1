@@ -183,6 +183,9 @@ try {
   $serviceArguments = @{ NonInteractive = $true }
   if ($SkipStart) { $serviceArguments.SkipStart = $true }
   & (Join-Path $installRoot "install-background-service.ps1") @serviceArguments
+  if (Test-HanakoBridgeShellIntegrationEligible -InstallRoot $installRoot) {
+    Install-HanakoBridgeShellIntegration -InstallRoot $installRoot | Out-Null
+  }
   Write-Host "Updated Hanako Local Bridge: $currentVersion -> $targetVersion"
 } catch {
   try {

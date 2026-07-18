@@ -11,6 +11,18 @@ function Assert-Manager {
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 . (Join-Path $projectRoot "manager-core.ps1")
 
+$managerXaml = Get-Content -LiteralPath (Join-Path $projectRoot "manager-winui\MainWindow.xaml") -Raw -Encoding UTF8
+$managerSource = Get-Content -LiteralPath (Join-Path $projectRoot "manager-winui\MainWindow.xaml.cs") -Raw -Encoding UTF8
+Assert-Manager ($managerXaml.Contains('x:Name="QueryDevicesButton"')) "Cloud query button is not addressable by busy state."
+Assert-Manager ($managerXaml.Contains('x:Name="ClaimDeviceButton"')) "Cloud claim button is not addressable by busy state."
+Assert-Manager ($managerSource.Contains("QueryDevicesButton.IsEnabled = !busy;")) "Busy state does not disable cloud query."
+Assert-Manager ($managerSource.Contains("ClaimDeviceButton.IsEnabled = !busy;")) "Busy state does not disable cloud claim."
+Assert-Manager ($managerSource.Contains("if (!IsPollingPausedPage(_selectedPageTag))")) "Initial load can restart polling on a paused page."
+Assert-Manager ($managerSource.Contains('tag is "devices" or "settings"')) "Cloud devices page does not pause polling."
+Assert-Manager `
+  ($managerSource -match 'if \(_busy\)\s*\{\s*ShowInfo\([^;]+InfoBarSeverity\.Informational\);\s*return;\s*\}') `
+  "Busy cloud actions can still fail silently."
+
 Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "wss://154-201-69-202.sslip.io/local-bridge/connect") -eq "https://154-201-69-202.sslip.io") `
   "WebSocket URL conversion failed."

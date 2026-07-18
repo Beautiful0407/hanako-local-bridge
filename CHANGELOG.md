@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.7 - 2026-07-18
+
+- Added a desktop manager shortcut during installation and repair missing desktop, Start menu, and uninstall entries during default-path online updates.
+- Paused background polling on the Cloud devices page and disabled claim/query actions while another manager operation is active.
+- Removed unused Windows App SDK AI, ML, and Widgets packages from the native manager payload.
+
 ## 1.4.6 - 2026-07-18
 
 - Paused background health polling while the Settings page is open and wait for in-flight refreshes before checking for updates.

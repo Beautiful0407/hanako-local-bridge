@@ -16,12 +16,9 @@ foreach ($taskName in @($tasks.Mcp, $tasks.Tunnel)) {
   Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 }
 Stop-BridgeProcesses -InstallRoot $installRoot -Runtime $runtime
-Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge" `
-  -Recurse `
-  -Force `
-  -ErrorAction SilentlyContinue
-$startMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "Hanako Local Bridge"
-Remove-Item -LiteralPath $startMenuDir -Recurse -Force -ErrorAction SilentlyContinue
+if (Test-HanakoBridgeShellIntegrationEligible -InstallRoot $installRoot) {
+  Remove-HanakoBridgeShellIntegration
+}
 
 Write-Host "Hanako Local Bridge background tasks were removed."
 

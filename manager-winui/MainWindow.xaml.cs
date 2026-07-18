@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private bool _busy;
     private bool _loaded;
     private bool _settingsLoaded;
+    private string _selectedPageTag = "overview";
     private UpdateStatus? _updateStatus;
 
     public ObservableCollection<DiagnosticItemViewModel> Diagnostics { get; } = [];
@@ -114,7 +115,10 @@ public sealed partial class MainWindow : Window
                 Environment.Exit(0);
                 return;
             }
-            _refreshTimer.Start();
+            if (!IsPollingPausedPage(_selectedPageTag))
+            {
+                _refreshTimer.Start();
+            }
         }
         catch
         {
@@ -168,6 +172,7 @@ public sealed partial class MainWindow : Window
         NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItemContainer?.Tag as string) ?? "overview";
+        _selectedPageTag = tag;
         OverviewPage.Visibility = tag == "overview" ? Visibility.Visible : Visibility.Collapsed;
         DiagnosticsPage.Visibility = tag == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         DevicesPage.Visibility = tag == "devices" ? Visibility.Visible : Visibility.Collapsed;
@@ -177,10 +182,10 @@ public sealed partial class MainWindow : Window
         {
             _ = RefreshLogsAsync();
         }
-        if (tag == "settings")
+        if (IsPollingPausedPage(tag))
         {
             _refreshTimer.Stop();
-            if (!_settingsLoaded)
+            if (tag == "settings" && !_settingsLoaded)
             {
                 _settingsLoaded = true;
                 _ = CheckForUpdateWhenIdleAsync();
@@ -191,6 +196,8 @@ public sealed partial class MainWindow : Window
             _refreshTimer.Start();
         }
     }
+
+    private static bool IsPollingPausedPage(string tag) => tag is "devices" or "settings";
 
     private async Task CheckForUpdateWhenIdleAsync()
     {
@@ -341,6 +348,8 @@ public sealed partial class MainWindow : Window
         StopButton.IsEnabled = !busy;
         RestartButton.IsEnabled = !busy;
         RepairButton.IsEnabled = !busy;
+        QueryDevicesButton.IsEnabled = !busy;
+        ClaimDeviceButton.IsEnabled = !busy;
         CheckUpdateButton.IsEnabled = !busy;
         InstallUpdateButton.IsEnabled = !busy && _updateStatus?.UpdateAvailable == true;
         if (!string.IsNullOrWhiteSpace(message)) FooterStatusText.Text = message;
@@ -529,7 +538,11 @@ public sealed partial class MainWindow : Window
 
     private async Task QueryCloudDevicesAsync(bool claim)
     {
-        if (_busy) return;
+        if (_busy)
+        {
+            ShowInfo("请稍候", "本地状态检测尚未完成，请稍后重试。", InfoBarSeverity.Informational);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(CloudBaseUrlBox.Text) || string.IsNullOrWhiteSpace(AccessKeyBox.Password))
         {
             ShowInfo("缺少登录信息", "请输入 Hana 网页地址和访问密钥。", InfoBarSeverity.Warning);

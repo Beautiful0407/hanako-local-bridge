@@ -71,6 +71,122 @@ function Write-BridgeJson {
   }
 }
 
+function Install-HanakoBridgeShellIntegration {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$ProgramsRoot = "",
+    [string]$DesktopRoot = "",
+    [switch]$SkipRegistry
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $package = Get-Content -LiteralPath (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+  if ([string]::IsNullOrWhiteSpace($ProgramsRoot)) {
+    $ProgramsRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+  }
+  if ([string]::IsNullOrWhiteSpace($DesktopRoot)) {
+    $DesktopRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+  }
+
+  if (-not $SkipRegistry) {
+    $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge"
+    New-Item -Path $uninstallKey -Force | Out-Null
+    $uninstallCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$root\uninstall-background-service.ps1`" -RemoveInstall -KeepData"
+    New-ItemProperty -Path $uninstallKey -Name DisplayName -Value "Hanako Local Bridge" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name DisplayVersion -Value ([string]$package.version) -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name Publisher -Value "Hanako Local Bridge" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name InstallLocation -Value $root -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name UninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name QuietUninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
+  }
+
+  $shortcutTarget = Join-Path $env:WINDIR "System32\wscript.exe"
+  $shortcutArguments = "//B //NoLogo `"$root\run-manager.vbs`""
+  $managerIcon = Join-Path $root "manager\HanakoBridgeManager.exe"
+  $startMenuDir = Join-Path $ProgramsRoot "Hanako Local Bridge"
+  $desktopShortcut = Join-Path $DesktopRoot "Hanako Local Bridge Manager.lnk"
+  New-Item -ItemType Directory -Force -Path $startMenuDir, $DesktopRoot | Out-Null
+
+  foreach ($shortcutPath in @(
+    (Join-Path $startMenuDir "Hanako Local Bridge Manager.lnk"),
+    $desktopShortcut
+  )) {
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $shortcutTarget
+    $shortcut.Arguments = $shortcutArguments
+    $shortcut.WorkingDirectory = $root
+    $shortcut.Description = "Manage, diagnose, repair, and claim Hanako Local Bridge devices"
+    if (Test-Path -LiteralPath $managerIcon -PathType Leaf) {
+      $shortcut.IconLocation = "$managerIcon,0"
+    }
+    $shortcut.Save()
+  }
+
+  [pscustomobject]@{
+    startMenu = Join-Path $startMenuDir "Hanako Local Bridge Manager.lnk"
+    desktop = $desktopShortcut
+  }
+}
+
+function Test-HanakoBridgeShellIntegrationEligible {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$DefaultInstallRoot = ""
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  if ([string]$env:HANA_BRIDGE_SKIP_UNINSTALL_REGISTRATION -match "^(1|true|yes|on)$") {
+    return $false
+  }
+
+  $registration = Get-ItemProperty `
+    -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge" `
+    -ErrorAction SilentlyContinue
+  if ($registration -and -not [string]::IsNullOrWhiteSpace([string]$registration.InstallLocation)) {
+    $registeredRoot = [System.IO.Path]::GetFullPath([string]$registration.InstallLocation).TrimEnd("\")
+    if ($registeredRoot -eq $root.TrimEnd("\")) {
+      return $true
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($DefaultInstallRoot)) {
+    $DefaultInstallRoot = Join-Path $env:LOCALAPPDATA "HanakoLocalBridge"
+  }
+  return [System.IO.Path]::GetFullPath($DefaultInstallRoot).TrimEnd("\") -eq $root.TrimEnd("\")
+}
+
+function Remove-HanakoBridgeShellIntegration {
+  param(
+    [string]$ProgramsRoot = "",
+    [string]$DesktopRoot = "",
+    [switch]$SkipRegistry
+  )
+
+  if ([string]::IsNullOrWhiteSpace($ProgramsRoot)) {
+    $ProgramsRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+  }
+  if ([string]::IsNullOrWhiteSpace($DesktopRoot)) {
+    $DesktopRoot = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+  }
+  if (-not $SkipRegistry) {
+    Remove-Item `
+      -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge" `
+      -Recurse `
+      -Force `
+      -ErrorAction SilentlyContinue
+  }
+  Remove-Item `
+    -LiteralPath (Join-Path $ProgramsRoot "Hanako Local Bridge") `
+    -Recurse `
+    -Force `
+    -ErrorAction SilentlyContinue
+  Remove-Item `
+    -LiteralPath (Join-Path $DesktopRoot "Hanako Local Bridge Manager.lnk") `
+    -Force `
+    -ErrorAction SilentlyContinue
+}
+
 function Get-BridgeTaskNames {
   param([Parameter(Mandatory = $true)]$Runtime)
 

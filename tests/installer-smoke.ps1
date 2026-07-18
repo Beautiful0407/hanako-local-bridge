@@ -78,6 +78,16 @@ $approvalPort = $mcpPort + 1
 $remotePort = 47000 + (Get-Random -Minimum 0 -Maximum 1000)
 $productionBefore = Get-ScheduledTask -TaskName "Hanako Local FS MCP", "Hanako Local FS Tunnel" -ErrorAction SilentlyContinue |
   Select-Object TaskName, State
+$productionDesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Hanako Local Bridge Manager.lnk"
+$productionStartShortcut = Join-Path `
+  ([Environment]::GetFolderPath("Programs")) `
+  "Hanako Local Bridge\Hanako Local Bridge Manager.lnk"
+$productionRegistrationPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge"
+$productionShellBefore = [pscustomobject]@{
+  desktopShortcut = Test-Path -LiteralPath $productionDesktopShortcut
+  startShortcut = Test-Path -LiteralPath $productionStartShortcut
+  registration = Get-ItemProperty -LiteralPath $productionRegistrationPath -ErrorAction SilentlyContinue
+}
 
 try {
   New-Item -ItemType Directory -Force -Path $fileRoot | Out-Null
@@ -263,6 +273,22 @@ try {
     if (-not $after -or $after.State -ne $before.State) {
       throw "Production task state changed during isolated installer test: $($before.TaskName)"
     }
+  }
+  $productionShellAfter = [pscustomobject]@{
+    desktopShortcut = Test-Path -LiteralPath $productionDesktopShortcut
+    startShortcut = Test-Path -LiteralPath $productionStartShortcut
+    registration = Get-ItemProperty -LiteralPath $productionRegistrationPath -ErrorAction SilentlyContinue
+  }
+  if ($productionShellAfter.desktopShortcut -ne $productionShellBefore.desktopShortcut) {
+    throw "Production desktop shortcut changed during isolated installer test."
+  }
+  if ($productionShellAfter.startShortcut -ne $productionShellBefore.startShortcut) {
+    throw "Production Start menu shortcut changed during isolated installer test."
+  }
+  $registrationBefore = [string]$productionShellBefore.registration.InstallLocation
+  $registrationAfter = [string]$productionShellAfter.registration.InstallLocation
+  if ($registrationAfter -ne $registrationBefore) {
+    throw "Production uninstall registration changed during isolated installer test."
   }
 
   Write-Host "installer smoke tests passed"

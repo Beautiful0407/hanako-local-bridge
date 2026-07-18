@@ -366,27 +366,8 @@ try {
   & (Join-Path $installDir "install-background-service.ps1") @serviceArguments
 
   if (-not $SkipUninstallRegistration) {
-    $package = Get-Content -LiteralPath (Join-Path $installDir "package.json") -Raw | ConvertFrom-Json
-    $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge"
-    New-Item -Path $uninstallKey -Force | Out-Null
-    $uninstallCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$installDir\uninstall-background-service.ps1`" -RemoveInstall -KeepData"
-    New-ItemProperty -Path $uninstallKey -Name DisplayName -Value "Hanako Local Bridge" -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name DisplayVersion -Value ([string]$package.version) -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name Publisher -Value "Hanako Local Bridge" -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name InstallLocation -Value $installDir -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name UninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name QuietUninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
-
-    $startMenuDir = Join-Path ([Environment]::GetFolderPath("Programs")) "Hanako Local Bridge"
-    New-Item -ItemType Directory -Force -Path $startMenuDir | Out-Null
-    $shortcutPath = Join-Path $startMenuDir "Hanako Local Bridge Manager.lnk"
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = Join-Path $env:WINDIR "System32\wscript.exe"
-    $shortcut.Arguments = "//B //NoLogo `"$installDir\run-manager.vbs`""
-    $shortcut.WorkingDirectory = $installDir
-    $shortcut.Description = "Manage, diagnose, repair, and claim Hanako Local Bridge devices"
-    $shortcut.Save()
+    . (Join-Path $installDir "bridge-common.ps1")
+    Install-HanakoBridgeShellIntegration -InstallRoot $installDir | Out-Null
   }
 
   Write-Host ""
@@ -394,7 +375,7 @@ try {
   Write-Host "Install directory: $installDir"
   if ($migrationSource) { Write-Host "Migrated persistent state from: $migrationSource" }
   Write-Host "Use status.ps1 to inspect the background service."
-  Write-Host "Use Hanako Local Bridge Manager from the Start menu for graphical diagnostics."
+  Write-Host "Use the desktop or Start menu Hanako Local Bridge Manager shortcut for graphical diagnostics."
   if ($Gui) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show(
