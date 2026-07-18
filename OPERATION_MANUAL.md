@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## v1.3.0 WinUI 3 图形化管理器
+## v1.3.1 WinUI 3 图形化管理器
 
-安装或覆盖升级 `HanakoLocalBridge-Setup-1.3.0.exe` 后，从开始菜单打开：
+安装或覆盖升级 `HanakoLocalBridge-Setup-1.3.1.exe` 后，从开始菜单打开：
 
 ```text
 Hanako Local Bridge
@@ -26,6 +26,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
 ```
 
 管理器使用 WinUI 3 原生窗口，支持浅色/深色主题和 5 秒自动状态刷新。启动器会先验证原生管理器；如果原生文件缺失或无法启动，则自动打开旧 WinForms 回退界面。
+
+`v1.3.1` 修复“检测并修复失败：`invalid start of a value`”。该错误只表示旧命令层把 `Stopped ...` 等状态文字混入 JSON，并不代表本地 MCP 或云端连接失败。
 
 多电脑排查：
 
@@ -160,7 +162,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
 
 ## 当前运行方式：完全信任
 
-当前部署版本为 `1.3.0`，后台服务启用：
+当前部署版本为 `1.3.1`，后台服务启用：
 
 ```text
 LOCAL_AGENT_TRUST_MODE=full
@@ -196,7 +198,7 @@ local_fs.access_status: disabled
 ## 1. 当前版本
 
 ```text
-Bridge version: 1.3.0
+Bridge version: 1.3.1
 Windows MCP:    http://127.0.0.1:8787/mcp
 Approval UI:   http://127.0.0.1:8788/
 Cloud WebSocket: ws://154.201.69.202/local-bridge/connect

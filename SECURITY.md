@@ -18,6 +18,9 @@ CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md
 device credential. It must remain on the installed computer and must never be
 added to Git.
 
+`CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md` must also stay out of Git release
+payloads, ZIP archives, Setup EXEs, and installed application directories.
+
 Use `config.example.json` as the configuration template. Keep access keys,
 server passwords, API keys, device credentials, and private SSH keys outside
 the repository.

@@ -98,8 +98,44 @@ public sealed class BridgeCommandService
             throw new InvalidOperationException("管理命令没有返回数据。");
         }
 
-        return JsonSerializer.Deserialize<T>(stdout, _jsonOptions)
-            ?? throw new InvalidOperationException("无法解析管理命令返回的数据。");
+        return DeserializeCommandOutput<T>(stdout);
+    }
+
+    private T DeserializeCommandOutput<T>(string stdout)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<T>(stdout, _jsonOptions)
+                ?? throw new JsonException("管理命令返回了空 JSON。");
+        }
+        catch (JsonException originalError)
+        {
+            var lines = stdout.Split(
+                ["\r\n", "\n", "\r"],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var index = lines.Length - 1; index >= 0; index--)
+            {
+                var candidate = lines[index];
+                var looksLikeJson =
+                    candidate.StartsWith('{') && candidate.EndsWith('}') ||
+                    candidate.StartsWith('[') && candidate.EndsWith(']');
+                if (!looksLikeJson) continue;
+
+                try
+                {
+                    var value = JsonSerializer.Deserialize<T>(candidate, _jsonOptions);
+                    if (value is not null) return value;
+                }
+                catch (JsonException)
+                {
+                    // Keep looking for the final complete JSON value.
+                }
+            }
+
+            throw new InvalidOperationException(
+                "管理命令返回了无法识别的数据，请重新检测或查看日志。",
+                originalError);
+        }
     }
 
     public async Task OpenSettingsAsync(CancellationToken cancellationToken = default)

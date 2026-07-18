@@ -1,8 +1,8 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.3.0`
+版本：`1.3.1`
 
-日期：`2026-07-17`
+日期：`2026-07-18`
 
 ## 1. 目标
 
@@ -32,8 +32,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.3.0.exe
-release\HanakoLocalBridge-1.3.0-win-x64.zip
+release\HanakoLocalBridge-Setup-1.3.1.exe
+release\HanakoLocalBridge-1.3.1-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -84,9 +84,11 @@ logs\
 
 其他文件可以由新版本覆盖。
 
+`CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md` 是仅供本机保存的私有手册，不进入 ZIP、Setup EXE 或正式安装目录。`v1.3.1` 覆盖升级会删除旧版本误装到安装目录中的副本。
+
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.3.0.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.3.1.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。
@@ -367,6 +369,12 @@ Windows 10 2004 或更高版本
 
 ```powershell
 npm.cmd test
+```
+
+管理命令 JSON 边界测试：
+
+```powershell
+npm.cmd run test:manager-command
 ```
 
 构建：

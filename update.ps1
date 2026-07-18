@@ -88,23 +88,50 @@ try {
   }
   Stop-BridgeProcesses -InstallRoot $installRoot -Runtime $runtime
   $managerRoot = [System.IO.Path]::GetFullPath((Join-Path $installRoot "manager")).TrimEnd("\") + "\"
-  Get-CimInstance Win32_Process -Filter "Name = 'HanakoBridgeManager.exe'" -ErrorAction SilentlyContinue |
-    Where-Object {
-      -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
-      [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith(
-        $managerRoot,
-        [System.StringComparison]::OrdinalIgnoreCase
-      )
-    } |
-    ForEach-Object {
-      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  $managerDeadline = (Get-Date).AddSeconds(30)
+  $emptyManagerChecks = 0
+  do {
+    $managerProcesses = @(
+      Get-CimInstance Win32_Process -Filter "Name = 'HanakoBridgeManager.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+          $executableMatches =
+            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+            [System.IO.Path]::GetFullPath($_.ExecutablePath).StartsWith(
+              $managerRoot,
+              [System.StringComparison]::OrdinalIgnoreCase
+            )
+          $commandMatches =
+            -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
+            ([string]$_.CommandLine).IndexOf(
+              $managerRoot,
+              [System.StringComparison]::OrdinalIgnoreCase
+            ) -ge 0
+          $executableMatches -or $commandMatches
+        }
+    )
+    if ($managerProcesses.Count -eq 0) {
+      $emptyManagerChecks++
+    } else {
+      $emptyManagerChecks = 0
+      foreach ($managerProcess in $managerProcesses) {
+        Stop-Process -Id $managerProcess.ProcessId -Force -ErrorAction SilentlyContinue
+      }
     }
+    Start-Sleep -Milliseconds 350
+  } while ((Get-Date) -lt $managerDeadline -and $emptyManagerChecks -lt 3)
+  if ($emptyManagerChecks -lt 3) {
+    throw "HanakoBridgeManager.exe did not exit before update."
+  }
 
   Get-ChildItem -LiteralPath $stage -Force | ForEach-Object {
     if ($_.Name -notin @("config.json", "data", "logs")) {
       Copy-Item -LiteralPath $_.FullName -Destination $installRoot -Recurse -Force
     }
   }
+  Remove-Item `
+    -LiteralPath (Join-Path $installRoot "CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md") `
+    -Force `
+    -ErrorAction SilentlyContinue
 
   if ($RememberManifest) {
     $updatedRuntime = Get-BridgeRuntime -InstallRoot $installRoot

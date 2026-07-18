@@ -28,13 +28,19 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
 $outputDir = [System.IO.Path]::GetFullPath($OutputDir)
 $buildRoot = Assert-ChildPath -Parent $projectRoot -Child (Join-Path $projectRoot "build\installer")
 $payloadRoot = Assert-ChildPath -Parent $buildRoot -Child (Join-Path $buildRoot "payload")
-$sfxRoot = Assert-ChildPath -Parent $buildRoot -Child (Join-Path $buildRoot "sfx")
 $managerPublishRoot = Assert-ChildPath -Parent $projectRoot -Child (Join-Path $projectRoot "build\manager-winui\win-x64")
+$tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd("\") + "\"
+$sfxRoot = [System.IO.Path]::GetFullPath(
+  (Join-Path $env:TEMP "HanakoLocalBridgeIExpress-$PID-$([Guid]::NewGuid().ToString('N'))")
+)
+if (-not $sfxRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Unsafe IExpress temporary path: $sfxRoot"
+}
 
 if (Test-Path -LiteralPath $buildRoot) {
   Remove-Item -LiteralPath $buildRoot -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path $payloadRoot, $sfxRoot, $outputDir | Out-Null
+New-Item -ItemType Directory -Force -Path $payloadRoot, $outputDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($NodePath)) {
   $NodePath = Join-Path $env:ProgramFiles "nodejs\node.exe"
@@ -48,7 +54,6 @@ $rootFiles = @(
   "bridge-common.ps1",
   "CHANGELOG.md",
   "cloud-hanako-AGENTS.md",
-  "CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md",
   "config.example.json",
   "configure.ps1",
   "configuration-ui.ps1",
@@ -129,18 +134,21 @@ $manifestPath = Join-Path $outputDir "update-manifest.json"
   [System.Text.UTF8Encoding]::new($false)
 )
 
-Copy-Item -LiteralPath $releaseZip -Destination (Join-Path $sfxRoot "payload.zip") -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "installer\bootstrap-install.ps1") `
-  -Destination (Join-Path $sfxRoot "bootstrap-install.ps1") `
-  -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "configuration-ui.ps1") `
-  -Destination (Join-Path $sfxRoot "configuration-ui.ps1") `
-  -Force
-
 $installerPath = Join-Path $outputDir "HanakoLocalBridge-Setup-$version.exe"
-$sedPath = Join-Path $buildRoot "installer.sed"
-$sourceDirectory = $sfxRoot.TrimEnd("\") + "\"
-$sed = @"
+$tempInstallerPath = Join-Path $sfxRoot "HanakoLocalBridge-Setup-$version.exe"
+try {
+  New-Item -ItemType Directory -Force -Path $sfxRoot | Out-Null
+  Copy-Item -LiteralPath $releaseZip -Destination (Join-Path $sfxRoot "payload.zip") -Force
+  Copy-Item -LiteralPath (Join-Path $projectRoot "installer\bootstrap-install.ps1") `
+    -Destination (Join-Path $sfxRoot "bootstrap-install.ps1") `
+    -Force
+  Copy-Item -LiteralPath (Join-Path $projectRoot "configuration-ui.ps1") `
+    -Destination (Join-Path $sfxRoot "configuration-ui.ps1") `
+    -Force
+
+  $sedPath = Join-Path $sfxRoot "installer.sed"
+  $sourceDirectory = $sfxRoot.TrimEnd("\") + "\"
+  $sed = @"
 [Version]
 Class=IEXPRESS
 SEDVersion=3
@@ -156,7 +164,7 @@ RebootMode=N
 InstallPrompt=
 DisplayLicense=
 FinishMessage=
-TargetName=$installerPath
+TargetName=$tempInstallerPath
 FriendlyName=Hanako Local Bridge $version
 AppLaunched=powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File bootstrap-install.ps1 -Gui
 PostInstallCmd=<None>
@@ -174,27 +182,41 @@ SourceFiles0=$sourceDirectory
 %FILE1%=
 %FILE2%=
 "@
-[System.IO.File]::WriteAllText($sedPath, $sed, [System.Text.Encoding]::ASCII)
-Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
-& (Join-Path $env:WINDIR "System32\iexpress.exe") /N /Q $sedPath
-$installerDeadline = (Get-Date).AddSeconds(300)
-$previousSize = -1
-$stableChecks = 0
-do {
-  Start-Sleep -Milliseconds 500
-  if (Test-Path -LiteralPath $installerPath -PathType Leaf) {
-    $sizeNow = (Get-Item -LiteralPath $installerPath).Length
-    if ($sizeNow -gt 0 -and $sizeNow -eq $previousSize) {
-      $stableChecks++
-    } else {
-      $stableChecks = 0
+  [System.IO.File]::WriteAllText($sedPath, $sed, [System.Text.Encoding]::ASCII)
+  Remove-Item -LiteralPath $tempInstallerPath -Force -ErrorAction SilentlyContinue
+  & (Join-Path $env:WINDIR "System32\iexpress.exe") /N /Q $sedPath
+  $installerDeadline = (Get-Date).AddSeconds(300)
+  $previousSize = -1
+  $stableChecks = 0
+  do {
+    Start-Sleep -Milliseconds 500
+    if (Test-Path -LiteralPath $tempInstallerPath -PathType Leaf) {
+      $sizeNow = (Get-Item -LiteralPath $tempInstallerPath).Length
+      if ($sizeNow -gt 0 -and $sizeNow -eq $previousSize) {
+        $stableChecks++
+      } else {
+        $stableChecks = 0
+      }
+      $previousSize = $sizeNow
     }
-    $previousSize = $sizeNow
-  }
-} while ((Get-Date) -lt $installerDeadline -and $stableChecks -lt 3)
+  } while ((Get-Date) -lt $installerDeadline -and $stableChecks -lt 3)
 
-if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf) -or (Get-Item $installerPath).Length -le 0) {
-  throw "IExpress failed to create the installer."
+  if (
+    -not (Test-Path -LiteralPath $tempInstallerPath -PathType Leaf) -or
+    (Get-Item $tempInstallerPath).Length -le 0
+  ) {
+    throw "IExpress failed to create the installer."
+  }
+
+  Remove-Item -LiteralPath $installerPath -Force -ErrorAction SilentlyContinue
+  Copy-Item -LiteralPath $tempInstallerPath -Destination $installerPath -Force
+} finally {
+  if (
+    (Test-Path -LiteralPath $sfxRoot) -and
+    $sfxRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)
+  ) {
+    Remove-Item -LiteralPath $sfxRoot -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 
 Write-Host "Built release:"

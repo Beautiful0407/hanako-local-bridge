@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 - 2026-07-18
+
+- Fixed WinUI repair/start/stop/restart actions failing JSON parsing when PowerShell emitted status text before the result.
+- Enforced a JSON-only stdout contract in `manager-command.ps1` and added a regression test with a simulated `Stopped ...` preamble.
+- Added WinUI fallback parsing for the final complete JSON value when unexpected command output is present.
+- Prevented normal repair operations from stopping `HanakoBridgeManager.exe`; installers and updates still close it explicitly when replacing files.
+- Restricted process cleanup to known Hanako watchdog, Node service, and legacy tunnel entry points instead of every process mentioning the install directory.
+- Removed the private cloud maintenance manual from release payloads and delete legacy installed copies during install or update.
+
 ## 1.3.0 - 2026-07-17
 
 - Replaced the primary Windows Forms manager with a modern WinUI 3 desktop application.

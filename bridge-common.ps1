@@ -233,6 +233,26 @@ function Invoke-BridgeProcessWithTimeout {
   }
 }
 
+function Test-BridgeManagedProcessCommandLine {
+  param(
+    [string]$CommandLine,
+    [Parameter(Mandatory = $true)][string]$InstallRoot,
+    [string]$ForwardMarker = ""
+  )
+
+  if ([string]::IsNullOrWhiteSpace($CommandLine)) { return $false }
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $inInstall = $CommandLine.IndexOf($root, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+  $isBridgeProcess = $CommandLine -match (
+    "(?i)(run-local-fs-hidden\.vbs|run-local-fs-service\.ps1|server\.cjs|" +
+    "run-reverse-tunnel-hidden\.vbs|run-reverse-tunnel-service\.ps1)"
+  )
+  $isTunnel =
+    -not [string]::IsNullOrWhiteSpace($ForwardMarker) -and
+    $CommandLine.IndexOf($ForwardMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+  return ($inInstall -and $isBridgeProcess) -or $isTunnel
+}
+
 function Stop-BridgeProcesses {
   param(
     [string]$InstallRoot = $PSScriptRoot,
@@ -263,10 +283,13 @@ function Stop-BridgeProcesses {
       if ($protectedPids.Contains([int]$_.ProcessId) -or [string]::IsNullOrWhiteSpace($_.CommandLine)) {
         return $false
       }
-      $commandLine = [string]$_.CommandLine
-      $inInstall = $commandLine.IndexOf($root, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-      $isTunnel = $commandLine.IndexOf($forwardMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
-      return $inInstall -or $isTunnel
+      if ([string]$_.Name -ieq "HanakoBridgeManager.exe") {
+        return $false
+      }
+      return Test-BridgeManagedProcessCommandLine `
+        -CommandLine ([string]$_.CommandLine) `
+        -InstallRoot $root `
+        -ForwardMarker $forwardMarker
     } |
     Sort-Object ProcessId -Descending |
     ForEach-Object {

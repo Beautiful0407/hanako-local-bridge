@@ -114,6 +114,9 @@ try {
       throw "Installed file is missing: $required"
     }
   }
+  if (Test-Path -LiteralPath (Join-Path $installRoot "CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md")) {
+    throw "Private maintenance manual must not be included in the installer."
+  }
   & (Join-Path $installRoot "runtime\node.exe") --version | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Bundled Node runtime did not start." }
   $managerSmoke = Start-Process `
@@ -160,7 +163,8 @@ try {
     Where-Object {
       $_.Name -eq "powershell.exe" -and
       -not [string]::IsNullOrWhiteSpace($_.CommandLine) -and
-      $_.CommandLine.IndexOf($installRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+      $_.CommandLine.IndexOf($installRoot, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+      $_.CommandLine -like "*run-local-fs-service.ps1*"
     } |
     Select-Object -First 1
   if (-not $watchdog -or $watchdog.CommandLine -notlike "*-WindowStyle Hidden*") {

@@ -18,6 +18,18 @@ Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "https://example.test/desktop/?x=1") -eq "https://example.test") `
   "Web URL normalization failed."
 
+$processTestRoot = "C:\Users\Test\HanakoLocalBridge"
+Assert-Manager `
+  (Test-BridgeManagedProcessCommandLine `
+    -CommandLine "node.exe C:\Users\Test\HanakoLocalBridge\server.cjs" `
+    -InstallRoot $processTestRoot) `
+  "Bridge server process detection failed."
+Assert-Manager `
+  (-not (Test-BridgeManagedProcessCommandLine `
+    -CommandLine "powershell.exe -Command Get-Content C:\Users\Test\HanakoLocalBridge\manager-command.ps1" `
+    -InstallRoot $processTestRoot)) `
+  "Unrelated process referencing the install directory was misidentified."
+
 $testId = [Guid]::NewGuid().ToString("N").Substring(0, 10)
 $testRoot = Join-Path $env:TEMP "HanakoBridgeManagerCore-$testId"
 $dataDir = Join-Path $testRoot "data"

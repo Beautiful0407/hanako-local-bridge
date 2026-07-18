@@ -1,5 +1,39 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
+## v1.3.1 管理命令 JSON 边界修复
+
+WinUI 通过 `manager-command.ps1` 启动 PowerShell 子进程，并要求标准输出只包含一条压缩 JSON。`repair.ps1`、`stop.ps1` 和后台任务安装脚本会使用 `Write-Host` 输出 `Stopped ...`、`Installed background tasks ...` 等文字；这些内容进入标准输出后会导致 `System.Text.Json` 在第一个字母处报 `invalid start of a value`。
+
+修复策略：
+
+```text
+manager-command.ps1
+  -> 屏蔽 Information / Warning / Verbose / Debug 流
+  -> 标准输出只写最终 JSON
+
+manager-core.ps1
+  -> stop / restart / repair 调用时屏蔽辅助输出流
+  -> 保留错误流，真实失败仍返回非零退出码
+
+BridgeCommandService.cs
+  -> 优先解析全部 stdout
+  -> 异常时从末尾查找最后一条完整 JSON
+
+bridge-common.ps1
+  -> 普通 repair 不结束 HanakoBridgeManager.exe
+  -> 只结束已知 watchdog、server.cjs 和旧隧道进程
+  -> 不结束仅在命令行中引用安装目录的其他 PowerShell 或工具
+  -> installer / update 仍使用专门逻辑关闭管理器后替换文件
+```
+
+回归测试：
+
+```powershell
+npm.cmd run test:manager-command
+```
+
+`tests/manager-command.test.ps1` 使用临时 `manager-core.ps1` 主动输出 `Stopped HanakoBridgeManager.exe ...`，并断言命令层最终只产生一行可解析 JSON。
+
 ## v1.3.0 WinUI 3 Windows 图形管理器
 
 管理器使用“原生界面 + JSON 命令层 + PowerShell 核心”三层结构：

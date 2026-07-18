@@ -2,7 +2,9 @@
 
 云端 Hana Agent 使用的 Windows 本地文件读写与 PowerShell/Python 执行桥。
 
-## 当前生效配置：v1.3.0 WinUI 3 图形管理版
+## 当前生效配置：v1.3.1 WinUI 3 图形管理版
+
+`v1.3.1` 修复了点击“检测并修复”后，PowerShell 状态文字污染 JSON 导致 WinUI 显示解析错误的问题；修复过程中管理器窗口也不会再被后台进程清理逻辑结束。
 
 `v1.3.0` 把本地管理器迁移到 WinUI 3，界面使用现代 Windows Fluent 控件；后台服务、配置和设备数据仍沿用原有 PowerShell/Node 实现。安装后可从开始菜单打开：
 
@@ -23,7 +25,7 @@
 
 原生管理器启动前会先执行快速自检。原生程序缺失或自检失败时，`run-manager.vbs` 自动回退到旧 WinForms 管理器，不影响修复和设备认领。
 
-如果 Hana 网页只显示一台电脑，先在缺失的电脑安装 `v1.3.0`，打开管理器检查云端状态：
+如果 Hana 网页只显示一台电脑，先在缺失的电脑安装 `v1.3.1`，打开管理器检查云端状态：
 
 ```text
 active：已经认领并在线
@@ -52,7 +54,7 @@ offline：未连接，点击“检测并修复”
 当前版本组合：
 
 ```text
-Windows Bridge: 1.3.0
+Windows Bridge: 1.3.1
 Cloud Hana:     0.401.11
 Device Router: 0.8.0
 ```
@@ -79,8 +81,8 @@ Device Router: 0.8.0
 发布文件：
 
 ```text
-release\HanakoLocalBridge-Setup-1.3.0.exe
-release\HanakoLocalBridge-1.3.0-win-x64.zip
+release\HanakoLocalBridge-Setup-1.3.1.exe
+release\HanakoLocalBridge-1.3.1-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -126,7 +128,7 @@ PowerShell/Python 脚本可以直接执行
 当前版本：
 
 ```text
-1.3.0
+1.3.1
 ```
 
 `v0.7.1` 增加可选离线队列。工具调用传入 `queueIfOffline: true` 后，目标电脑离线时请求会保存在 VPS；设备重新上线后自动执行。使用 `local_device.queue` 查看结果，使用 `local_device.cancel_queued` 取消尚未执行的请求。

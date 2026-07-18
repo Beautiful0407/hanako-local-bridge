@@ -348,10 +348,12 @@ function Invoke-HanakoBridgeManagerAction {
       }
     }
     "stop" {
-      & (Join-Path $root "stop.ps1") -ConfigPath $runtime.configPath | Out-Null
+      & (Join-Path $root "stop.ps1") -ConfigPath $runtime.configPath `
+        3>$null 4>$null 5>$null 6>$null | Out-Null
     }
     "restart" {
-      & (Join-Path $root "stop.ps1") -ConfigPath $runtime.configPath | Out-Null
+      & (Join-Path $root "stop.ps1") -ConfigPath $runtime.configPath `
+        3>$null 4>$null 5>$null 6>$null | Out-Null
       Start-Sleep -Seconds 1
       if (-not (Get-ScheduledTask -TaskName $tasks.Mcp -ErrorAction SilentlyContinue)) {
         throw "The MCP scheduled task is missing. Run repair."
@@ -362,7 +364,8 @@ function Invoke-HanakoBridgeManagerAction {
       }
     }
     "repair" {
-      & (Join-Path $root "repair.ps1") -ConfigPath $runtime.configPath -NonInteractive | Out-Null
+      & (Join-Path $root "repair.ps1") -ConfigPath $runtime.configPath -NonInteractive `
+        3>$null 4>$null 5>$null 6>$null | Out-Null
     }
   }
 
