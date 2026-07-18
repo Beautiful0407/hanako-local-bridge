@@ -177,11 +177,39 @@ public sealed partial class MainWindow : Window
         {
             _ = RefreshLogsAsync();
         }
-        if (tag == "settings" && !_settingsLoaded)
+        if (tag == "settings")
         {
-            _settingsLoaded = true;
-            _ = CheckForUpdateAsync(showErrors: false);
+            _refreshTimer.Stop();
+            if (!_settingsLoaded)
+            {
+                _settingsLoaded = true;
+                _ = CheckForUpdateWhenIdleAsync();
+            }
         }
+        else if (_loaded && !_smokeTest && !_refreshTimer.IsEnabled)
+        {
+            _refreshTimer.Start();
+        }
+    }
+
+    private async Task CheckForUpdateWhenIdleAsync()
+    {
+        for (var attempt = 0; attempt < 40 && _busy; attempt++)
+        {
+            await Task.Delay(250);
+        }
+        if (SettingsPage.Visibility != Visibility.Visible)
+        {
+            _settingsLoaded = false;
+            return;
+        }
+        if (_busy)
+        {
+            _settingsLoaded = false;
+            UpdateStatusText.Text = "服务正忙，请点击检查更新重试";
+            return;
+        }
+        await CheckForUpdateAsync(showErrors: false);
     }
 
     private async Task RefreshSnapshotAsync(bool showErrors = true)

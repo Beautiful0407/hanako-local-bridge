@@ -212,7 +212,7 @@ SourceFiles0=$sourceDirectory
   [System.IO.File]::WriteAllText($sedPath, $sed, [System.Text.Encoding]::ASCII)
   Remove-Item -LiteralPath $tempInstallerPath -Force -ErrorAction SilentlyContinue
   & (Join-Path $env:WINDIR "System32\iexpress.exe") /N /Q $sedPath
-  $installerDeadline = (Get-Date).AddSeconds(300)
+  $installerDeadline = (Get-Date).AddSeconds(900)
   $previousSize = -1
   $stableChecks = 0
   do {

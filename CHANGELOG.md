@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.6 - 2026-07-18
+
+- Paused background health polling while the Settings page is open and wait for in-flight refreshes before checking for updates.
+- Prevented the Settings update section from getting stuck at "not checked" when navigation races with a status refresh.
+
 ## 1.4.5 - 2026-07-18
 
 - Replaced large update-package downloads with bounded, retried `curl.exe` transfers to prevent Windows PowerShell `Invoke-WebRequest` from hanging at zero bytes.
