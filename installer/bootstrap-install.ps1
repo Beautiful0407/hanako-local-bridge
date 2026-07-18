@@ -328,6 +328,11 @@ try {
     -LiteralPath (Join-Path $installDir "CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md") `
     -Force `
     -ErrorAction SilentlyContinue
+  . (Join-Path $installDir "bridge-common.ps1")
+  $cleanup = Invoke-HanakoBridgePayloadCleanup -InstallRoot $installDir -Force
+  if ($cleanup.removedFiles -gt 0) {
+    Write-Host "Removed $($cleanup.removedFiles) stale payload files."
+  }
 
   $configureArguments = @{
     InstallRoot = $installDir
@@ -366,7 +371,6 @@ try {
   & (Join-Path $installDir "install-background-service.ps1") @serviceArguments
 
   if (-not $SkipUninstallRegistration) {
-    . (Join-Path $installDir "bridge-common.ps1")
     Install-HanakoBridgeShellIntegration -InstallRoot $installDir | Out-Null
   }
 

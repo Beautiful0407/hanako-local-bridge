@@ -9,6 +9,10 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
 
 $installRoot = Get-BridgeInstallRoot -InstallRoot $PSScriptRoot
+$cleanup = Invoke-HanakoBridgePayloadCleanup -InstallRoot $installRoot
+if (-not $cleanup.skipped -and $cleanup.removedFiles -gt 0) {
+  Write-Host "Removed $($cleanup.removedFiles) stale payload files."
+}
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
   $ConfigPath = Join-Path $installRoot "config.json"
 }

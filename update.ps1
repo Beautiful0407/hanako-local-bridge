@@ -157,6 +157,10 @@ try {
     -LiteralPath (Join-Path $installRoot "CLOUD_HANA_AGENT_MAINTENANCE_MANUAL.md") `
     -Force `
     -ErrorAction SilentlyContinue
+  $cleanup = Invoke-HanakoBridgePayloadCleanup -InstallRoot $installRoot -Force
+  if ($cleanup.removedFiles -gt 0) {
+    Write-Host "Removed $($cleanup.removedFiles) stale payload files."
+  }
 
   $updatedRuntime = Get-BridgeRuntime -InstallRoot $installRoot
   $configChanged = $false

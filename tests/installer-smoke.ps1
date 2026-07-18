@@ -121,6 +121,7 @@ try {
     "manager-command.ps1",
     "manager-ui.ps1",
     "manager\HanakoBridgeManager.exe",
+    "payload-manifest.json",
     "run-manager.vbs",
     "open-manager.ps1"
   )) {
@@ -203,7 +204,11 @@ try {
   Wait-BridgeHealth -Port $mcpPort | Out-Null
 
   $marker = Join-Path $installRoot "data\installer-smoke-preserved.txt"
+  $staleManagerFile = Join-Path $installRoot "manager\obsolete-manager-payload.dll"
+  $staleLibraryFile = Join-Path $installRoot "lib\obsolete-library-payload.cjs"
   [System.IO.File]::WriteAllText($marker, "preserve-me", [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText($staleManagerFile, "stale", [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText($staleLibraryFile, "stale", [System.Text.UTF8Encoding]::new($false))
   Copy-Item -LiteralPath $releaseZip -Destination $localPackagePath -Force
   $localManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
   $localManifest.packageUrl = "package.zip"
@@ -225,6 +230,15 @@ try {
   if ((Get-Content -LiteralPath $marker -Raw) -ne "preserve-me") {
     throw "Persistent data was not preserved during update."
   }
+  if (Test-Path -LiteralPath $staleManagerFile) {
+    throw "Online update preserved a stale manager payload file."
+  }
+  if (Test-Path -LiteralPath $staleLibraryFile) {
+    throw "Online update preserved a stale library payload file."
+  }
+  if (Test-Path -LiteralPath (Join-Path $installRoot "payload-cleanup.pending")) {
+    throw "Online update did not complete payload cleanup."
+  }
   Wait-BridgeHealth -Port $mcpPort | Out-Null
 
   Remove-Item Env:HANA_BRIDGE_NO_MIGRATE -ErrorAction SilentlyContinue
@@ -233,11 +247,16 @@ try {
   New-Item -ItemType Directory -Force -Path `
     (Join-Path $legacyRoot "data"), `
     (Join-Path $legacyRoot "logs"), `
-    (Join-Path $migrationInstallRoot "data") | Out-Null
+    (Join-Path $migrationInstallRoot "data"), `
+    (Join-Path $migrationInstallRoot "manager") | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $legacyRoot "server.cjs"), "// legacy marker")
   [System.IO.File]::WriteAllText((Join-Path $legacyRoot "data\legacy-state.txt"), "legacy-state")
   [System.IO.File]::WriteAllText((Join-Path $legacyRoot "logs\legacy.log"), "legacy-log")
   [System.IO.File]::WriteAllText((Join-Path $migrationInstallRoot "data\preexisting.txt"), "preexisting")
+  [System.IO.File]::WriteAllText(
+    (Join-Path $migrationInstallRoot "manager\obsolete-manager-payload.dll"),
+    "stale"
+  )
   & powershell.exe `
     -NoLogo `
     -NoProfile `
@@ -258,6 +277,9 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Explicit migration installer test failed with code $LASTEXITCODE." }
   if ((Get-Content -LiteralPath (Join-Path $migrationInstallRoot "data\legacy-state.txt") -Raw) -ne "legacy-state") {
     throw "Legacy persistent state was not migrated over an existing target."
+  }
+  if (Test-Path -LiteralPath (Join-Path $migrationInstallRoot "manager\obsolete-manager-payload.dll")) {
+    throw "Overwrite installation preserved a stale manager payload file."
   }
   $migrationBackup = Get-ChildItem -LiteralPath $migrationInstallRoot -Directory -Filter "migration-backup-*" |
     Sort-Object LastWriteTime -Descending |

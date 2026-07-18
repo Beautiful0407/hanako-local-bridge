@@ -101,10 +101,36 @@ if ($LASTEXITCODE -ne 0) { throw "WinUI manager build failed." }
 Copy-Item -LiteralPath $managerPublishRoot -Destination (Join-Path $payloadRoot "manager") -Recurse -Force
 New-Item -ItemType Directory -Force -Path (Join-Path $payloadRoot "runtime") | Out-Null
 Copy-Item -LiteralPath $NodePath -Destination (Join-Path $payloadRoot "runtime\node.exe") -Force
+[System.IO.File]::WriteAllText(
+  (Join-Path $payloadRoot "payload-cleanup.pending"),
+  "$version$([Environment]::NewLine)",
+  [System.Text.UTF8Encoding]::new($false)
+)
+$payloadFiles = @(
+  Get-ChildItem -LiteralPath $payloadRoot -Recurse -File -Force |
+    ForEach-Object {
+      $_.FullName.Substring($payloadRoot.TrimEnd("\").Length + 1).Replace("\", "/")
+    } |
+    Sort-Object
+)
+$payloadFiles += "payload-manifest.json"
+$payloadManifest = [ordered]@{
+  schemaVersion = 1
+  version = $version
+  managedDirectories = @("cloud", "lib", "manager", "runtime", "scripts")
+  files = $payloadFiles
+}
+[System.IO.File]::WriteAllText(
+  (Join-Path $payloadRoot "payload-manifest.json"),
+  ($payloadManifest | ConvertTo-Json -Depth 5) + [Environment]::NewLine,
+  [System.Text.UTF8Encoding]::new($false)
+)
 
 foreach ($requiredManagerFile in @(
   "manager-command.ps1",
-  "manager\HanakoBridgeManager.exe"
+  "manager\HanakoBridgeManager.exe",
+  "payload-manifest.json",
+  "payload-cleanup.pending"
 )) {
   if (-not (Test-Path -LiteralPath (Join-Path $payloadRoot $requiredManagerFile) -PathType Leaf)) {
     throw "Installer payload is missing $requiredManagerFile"

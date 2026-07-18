@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.8 - 2026-07-18
+
+- Added a signed-release payload inventory and remove obsolete managed files during online updates and overwrite installations.
+- Preserved configuration, device data, logs, migration backups, and user-created root files while cleaning old manager/runtime dependencies.
+
 ## 1.4.7 - 2026-07-18
 
 - Added a desktop manager shortcut during installation and repair missing desktop, Start menu, and uninstall entries during default-path online updates.

@@ -71,6 +71,114 @@ function Write-BridgeJson {
   }
 }
 
+function Remove-HanakoBridgeStalePayloadFiles {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$ManifestPath = ""
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $rootPrefix = $root.TrimEnd("\") + "\"
+  if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
+    $ManifestPath = Join-Path $root "payload-manifest.json"
+  }
+  $manifestFile = [System.IO.Path]::GetFullPath($ManifestPath)
+  if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
+    throw "Payload manifest is missing: $manifestFile"
+  }
+
+  $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+  if ([int]$manifest.schemaVersion -ne 1) {
+    throw "Unsupported payload manifest schema: $($manifest.schemaVersion)"
+  }
+
+  $expectedFiles = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+  )
+  foreach ($entry in @($manifest.files)) {
+    $relative = ([string]$entry).Replace("\", "/").TrimStart("/")
+    if (
+      [string]::IsNullOrWhiteSpace($relative) -or
+      [System.IO.Path]::IsPathRooted($relative) -or
+      @($relative.Split("/")) -contains ".."
+    ) {
+      throw "Unsafe payload manifest path: $entry"
+    }
+    [void]$expectedFiles.Add($relative)
+  }
+
+  $removedFiles = 0
+  $removedDirectories = 0
+  foreach ($directoryName in @($manifest.managedDirectories)) {
+    $managedName = ([string]$directoryName).Trim()
+    if (
+      [string]::IsNullOrWhiteSpace($managedName) -or
+      $managedName -match "[\\/]" -or
+      $managedName -in @(".", "..")
+    ) {
+      throw "Unsafe managed payload directory: $directoryName"
+    }
+
+    $managedRoot = [System.IO.Path]::GetFullPath((Join-Path $root $managedName))
+    if (-not ($managedRoot + "\").StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Managed payload directory escapes the install root: $managedRoot"
+    }
+    if (-not (Test-Path -LiteralPath $managedRoot -PathType Container)) {
+      continue
+    }
+
+    foreach ($file in Get-ChildItem -LiteralPath $managedRoot -Recurse -File -Force) {
+      $relative = $file.FullName.Substring($rootPrefix.Length).Replace("\", "/")
+      if (-not $expectedFiles.Contains($relative)) {
+        Remove-Item -LiteralPath $file.FullName -Force
+        $removedFiles++
+      }
+    }
+
+    $directories = @(
+      Get-ChildItem -LiteralPath $managedRoot -Recurse -Directory -Force |
+        Sort-Object @{ Expression = { $_.FullName.Length }; Descending = $true }
+    )
+    foreach ($directory in $directories) {
+      if (-not (Get-ChildItem -LiteralPath $directory.FullName -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+        $removedDirectories++
+      }
+    }
+  }
+
+  return [pscustomobject]@{
+    manifestPath = $manifestFile
+    removedFiles = $removedFiles
+    removedDirectories = $removedDirectories
+  }
+}
+
+function Invoke-HanakoBridgePayloadCleanup {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [switch]$Force
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $markerPath = Join-Path $root "payload-cleanup.pending"
+  if (-not $Force -and -not (Test-Path -LiteralPath $markerPath -PathType Leaf)) {
+    return [pscustomobject]@{
+      skipped = $true
+      removedFiles = 0
+      removedDirectories = 0
+    }
+  }
+
+  $result = Remove-HanakoBridgeStalePayloadFiles -InstallRoot $root
+  Remove-Item -LiteralPath $markerPath -Force -ErrorAction SilentlyContinue
+  return [pscustomobject]@{
+    skipped = $false
+    removedFiles = $result.removedFiles
+    removedDirectories = $result.removedDirectories
+  }
+}
+
 function Install-HanakoBridgeShellIntegration {
   param(
     [string]$InstallRoot = $PSScriptRoot,
