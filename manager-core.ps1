@@ -389,7 +389,7 @@ function Invoke-HanakoBridgeCloudQuery {
   if ([string]::IsNullOrWhiteSpace($base)) { throw "Hana web base URL is invalid." }
   if ([string]::IsNullOrWhiteSpace($AccessKey)) { throw "Enter the Hana web access key." }
 
-  $session = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
+  $session = $null
   $loginBody = @{
     credential = $AccessKey
     clientKind = "desktop"
@@ -397,10 +397,11 @@ function Invoke-HanakoBridgeCloudQuery {
   Invoke-RestMethod `
     -Uri "$base/api/web-auth/login" `
     -Method Post `
-    -WebSession $session `
+    -SessionVariable session `
     -ContentType "application/json" `
     -Body $loginBody `
     -TimeoutSec 20 | Out-Null
+  if (-not $session) { throw "Hana login did not create a web session." }
 
   $claimed = $false
   $claimMessage = ""

@@ -1,6 +1,6 @@
 {
   "name": "hanako-local-fs-mcp-bridge",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Windows local filesystem and PowerShell/Python execution bridge for Hana Agent",
   "type": "commonjs",

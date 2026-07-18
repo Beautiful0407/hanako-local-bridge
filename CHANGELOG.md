@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.2 - 2026-07-18
+
+- Fixed WinUI cloud device query and claim failing in fresh Windows PowerShell `-File` processes because `WebRequestSession` was referenced before its utility assembly was loaded.
+- Let `Invoke-RestMethod -SessionVariable` create the login session and added a regression test that verifies the same session is reused for the device query.
+
 ## 1.4.1 - 2026-07-18
 
 - Moved the public signed update manifest and ZIP package endpoint to the production HTTPS server so automatic updates work while the GitHub source repository remains private.

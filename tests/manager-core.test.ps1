@@ -18,6 +18,59 @@ Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "https://example.test/desktop/?x=1") -eq "https://example.test") `
   "Web URL normalization failed."
 
+$script:managerCloudCalls = @()
+function Invoke-RestMethod {
+  param(
+    [string]$Uri,
+    [string]$Method,
+    [object]$WebSession,
+    [string]$SessionVariable,
+    [string]$ContentType,
+    [string]$Body,
+    [int]$TimeoutSec
+  )
+
+  $script:managerCloudCalls += $Uri
+  if ($Uri -eq "https://example.test/api/web-auth/login") {
+    if ($SessionVariable -ne "session") {
+      throw "Cloud login did not request a reusable web session."
+    }
+    Set-Variable `
+      -Name $SessionVariable `
+      -Value ([pscustomobject]@{ marker = "manager-cloud-session" }) `
+      -Scope 1
+    return [pscustomobject]@{ ok = $true }
+  }
+  if ($Uri -eq "https://example.test/api/local-bridge/devices") {
+    if ($WebSession.marker -ne "manager-cloud-session") {
+      throw "Cloud device query did not reuse the login session."
+    }
+    return [pscustomobject]@{
+      devices = @(
+        [pscustomobject]@{
+          id = "manager-cloud-device"
+          name = "Manager Cloud Device"
+          version = "test"
+          status = "online"
+          lastSeenAt = "2026-07-18T00:00:00Z"
+        }
+      )
+    }
+  }
+  throw "Unexpected cloud test request: $Uri"
+}
+
+try {
+  $cloudResult = Invoke-HanakoBridgeCloudQuery `
+    -BaseUrl "https://example.test" `
+    -AccessKey "manager-cloud-test-key"
+  Assert-Manager ($cloudResult.devices.Count -eq 1) "Cloud device query returned the wrong device count."
+  Assert-Manager ($cloudResult.devices[0].id -eq "manager-cloud-device") "Cloud device query returned the wrong device."
+  Assert-Manager ($script:managerCloudCalls.Count -eq 2) "Cloud device query made an unexpected number of requests."
+} finally {
+  Remove-Item Function:\Invoke-RestMethod -Force -ErrorAction SilentlyContinue
+}
+
 $processTestRoot = "C:\Users\Test\HanakoLocalBridge"
 Assert-Manager `
   (Test-BridgeManagedProcessCommandLine `
