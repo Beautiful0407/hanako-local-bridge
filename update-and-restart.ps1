@@ -18,7 +18,9 @@ $arguments = @(
   "-ExecutionPolicy",
   "Bypass",
   "-File",
-  $updateScript
+  $updateScript,
+  "-TargetRoot",
+  $root
 )
 if (-not [string]::IsNullOrWhiteSpace($Manifest)) {
   $arguments += @("-Manifest", $Manifest)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.5 - 2026-07-18
+
+- Replaced large update-package downloads with bounded, retried `curl.exe` transfers to prevent Windows PowerShell `Invoke-WebRequest` from hanging at zero bytes.
+- Added a target-install-root option for recovery updates and a download regression test.
+
 ## 1.4.4 - 2026-07-18
 
 - Fixed WinUI system tray notification decoding so double-click and right-click work with `NOTIFYICON_VERSION_4`.

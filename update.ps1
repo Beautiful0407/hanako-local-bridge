@@ -1,5 +1,6 @@
 param(
   [string]$Manifest = "",
+  [string]$TargetRoot = "",
   [switch]$Force,
   [switch]$SkipStart,
   [switch]$RememberManifest
@@ -7,6 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
+. (Join-Path $PSScriptRoot "update-download.ps1")
 . (Join-Path $PSScriptRoot "update-signature.ps1")
 $officialCloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
 $legacyCloudUrl = "ws://154.201.69.202/local-bridge/connect"
@@ -35,7 +37,10 @@ function Resolve-Resource {
   return [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $Base) $Reference))
 }
 
-$installRoot = Get-BridgeInstallRoot -InstallRoot $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($TargetRoot)) {
+  $TargetRoot = $PSScriptRoot
+}
+$installRoot = Get-BridgeInstallRoot -InstallRoot $TargetRoot
 $runtime = Get-BridgeRuntime -InstallRoot $installRoot
 $config = $runtime.config
 if ([string]::IsNullOrWhiteSpace($Manifest)) {
@@ -76,11 +81,7 @@ $stage = Join-Path $tempRoot "payload"
 
 try {
   New-Item -ItemType Directory -Force -Path $tempRoot, $stage | Out-Null
-  if ($packageSource -match "^https?://") {
-    Invoke-WebRequest -UseBasicParsing -Uri $packageSource -OutFile $packageFile -TimeoutSec 120
-  } else {
-    Copy-Item -LiteralPath $packageSource -Destination $packageFile -Force
-  }
+  Save-HanakoUpdateResource -Source $packageSource -Destination $packageFile
 
   $actualHash = (Get-FileHash -LiteralPath $packageFile -Algorithm SHA256).Hash.ToLowerInvariant()
   $expectedHash = ([string]$manifestData.sha256).Trim().ToLowerInvariant()
