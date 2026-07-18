@@ -1,12 +1,12 @@
 {
     "schemaVersion":  1,
     "channel":  "stable",
-    "version":  "1.4.2",
-    "publishedAt":  "2026-07-18T05:37:25.6340393Z",
-    "packageUrl":  "https://154-201-69-202.sslip.io/local-bridge/releases/HanakoLocalBridge-1.4.2-win-x64.zip",
-    "sha256":  "c74f85312278e52805ecbad3ed7cf2d7642462524e929031a253b5644a53d578",
-    "size":  123847817,
-    "notes":  "Hanako Local Bridge 1.4.2",
+    "version":  "1.4.3",
+    "publishedAt":  "2026-07-18T06:21:16.6704604Z",
+    "packageUrl":  "https://154-201-69-202.sslip.io/local-bridge/releases/HanakoLocalBridge-1.4.3-win-x64.zip",
+    "sha256":  "5fd1f265da839aef88393f32f72fe6b0087745ced72bb49aa25a538641ed5201",
+    "size":  123850265,
+    "notes":  "Hanako Local Bridge 1.4.3",
     "signatureAlgorithm":  "RSA-SHA256",
-    "signature":  "vfllH3Milxxt8RdWIXkXhdYXu5OQPqUHSiwX42T0gxchhgBpLpq/FeSfGJVSxbvDhVHgz8Heeyf3xOnL5Cu/qvv/c0K3B8pHGM8t2DtCyBoFfrs8Qhxo5G9z8feHvqRJha0irKxudn45VDLsgyTr9dUPzEABmGlwrSlkSuF3kZqNEtS2aj1ml35qzcMIdcK8IHTcbyScIM7ItWQR1lExvQFEaNj016pVbDQ5ZwG6hi1nOS3Jzlp6j1ujsx/mHIS+mWMAS+pv3HQUCc2LikBwYPWIaV390SLKMcGhZZ9tEa01luGPJntjSIZwIdZJewayd0TEc1V2p9T2PrScW5c/EXrZcNhMTTekWErGFYR2NugM7EmcgfpYdbw5iH+9SrXWhZnOLpfOuOems4eoIwl56OskrRLrmg8LBuoWpHfAhV1zRVNEDDIiy4To8xXTSmSauy2Uavhm+eYfyE4+nG+KDw7O+RrAJEKw2qkeF8QQE1vFUPxwtJkbeTLLYyZLDU6s"
+    "signature":  "ITtgTy6/vT4duNun7qYBYs4A6gTEl+uSVEdEPzU92+sMnNr7J17kFhgpnd5Itow+n9HpHBPBY6hPRyUJll8VEoK3wuJtWy7f71W95MhKHRRCVPlR7S/NAXftlGjiKmijTrvyVIaybjazwh/5LtMO5TfEF74aOB+YocD0BOJ3h3Mc/gg9aWoGJYLDvF5tq279VS8lcbVZAWLMEjW3IJaGeUpK5coBucTwBIt8o1UiylZSyJaTQE3WVJT02VCrNHVpb9YYL6uZH6MEAhVzFlzbYiES+VhfcarUQGJrNDDWtAvjLX1Ih2mlxMDeOxW44v7WZlY9lK/+6GLVDIucnMdmA9Y8R+V4qq12kTocKuuwhK/pYJcxkJg3hdHm4WFfwFy6xHUwLV3STYIXJKAuzXcKhQXQo2mU2d7Oi87HZuWD9tJkSccSzVI9rfFQG0j3OSMtvX/RT27QnOiXqmZBNRkdo44uCTJ/5xhtdl4jH6pMW7jRSdYQQbQrwxyxiqNq5HIt"
 }

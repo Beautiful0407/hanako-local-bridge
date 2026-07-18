@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 - 2026-07-18
+
+- Added a native Windows system-tray icon to the WinUI manager.
+- Minimizing the manager now hides its window from the taskbar while keeping the bridge services running.
+- Added tray actions to reopen or exit the manager.
+
 ## 1.4.2 - 2026-07-18
 
 - Fixed WinUI cloud device query and claim failing in fresh Windows PowerShell `-File` processes because `WebRequestSession` was referenced before its utility assembly was loaded.

@@ -17,6 +17,8 @@ public sealed partial class MainWindow : Window
     private readonly bool _smokeTest;
     private ManagerSnapshot? _snapshot;
     private AppWindow? _appWindow;
+    private SystemTrayIcon? _trayIcon;
+    private bool _hiddenToTray;
     private bool _busy;
     private bool _loaded;
 
@@ -36,6 +38,14 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         ConfigureWindow();
+        if (!_smokeTest)
+        {
+            _trayIcon = new SystemTrayIcon(
+                WinRT.Interop.WindowNative.GetWindowHandle(this),
+                RestoreFromTray,
+                ExitFromTray,
+                HideToTray);
+        }
         Navigation.SelectedItem = OverviewNavItem;
         RootGrid.Loaded += RootGrid_Loaded;
         Closed += MainWindow_Closed;
@@ -117,6 +127,30 @@ public sealed partial class MainWindow : Window
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
         _refreshTimer.Stop();
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+    }
+
+    private void HideToTray()
+    {
+        if (_hiddenToTray) return;
+        _hiddenToTray = true;
+        _appWindow?.Hide();
+    }
+
+    private void RestoreFromTray()
+    {
+        if (!_hiddenToTray) return;
+        _hiddenToTray = false;
+        _appWindow?.Show();
+        Activate();
+    }
+
+    private void ExitFromTray()
+    {
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        Close();
     }
 
     private async void RefreshTimer_Tick(object? sender, object e)
