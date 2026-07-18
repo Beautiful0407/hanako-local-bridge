@@ -29,14 +29,14 @@ Windows 本地桥主动连接云端 Hana
 ```text
 Windows Hanako Local Bridge 1.2.0
   |
-  | ws://154.201.69.202/local-bridge/connect
+  | wss://154-201-69-202.sslip.io/local-bridge/connect
   | 生产环境应升级为 wss://
   v
 Cloud Hana 0.401.11 LocalBridgeGateway
   |
   | 127.0.0.1 内部 HTTP
   v
-Device Router 0.8.0
+Device Router 0.8.1
   |
   v
 Hana local_fs / local_exec / local_device 工具
@@ -45,7 +45,7 @@ Hana local_fs / local_exec / local_device 工具
 浏览器认领链路：
 
 ```text
-浏览器访问 http://154.201.69.202/desktop/
+浏览器访问 https://154-201-69-202.sslip.io/desktop/
   -> 输入 Hana 访问密钥
   -> Hana 创建已认证网页会话
   -> 网页访问 http://127.0.0.1:8788/api/client-identity
@@ -168,7 +168,7 @@ http://127.0.0.1:8788/api/client-identity
   "cloud": {
     "status": "active",
     "claimToken": null,
-    "cloudUrl": "ws://154.201.69.202/local-bridge/connect"
+    "cloudUrl": "wss://154-201-69-202.sslip.io/local-bridge/connect"
   }
 }
 ```
@@ -192,7 +192,7 @@ error            配置或 WebSocket 运行时错误
 {
   "cloud": {
     "enabled": true,
-    "url": "ws://154.201.69.202/local-bridge/connect",
+    "url": "wss://154-201-69-202.sslip.io/local-bridge/connect",
     "reconnectMinSeconds": 3,
     "reconnectMaxSeconds": 60,
     "heartbeatSeconds": 25
@@ -235,7 +235,7 @@ wss://hana.example.com/local-bridge/connect
 ```text
 Windows Bridge: 1.2.0
 Cloud Hana:     0.401.11
-Device Router: 0.8.0
+Device Router: 0.8.1
 Protocol:       1
 ```
 

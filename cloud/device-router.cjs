@@ -41,6 +41,7 @@ function loadConfig() {
         name: String(device.name || device.id),
         url: String(device.url),
         healthUrl: String(device.healthUrl || String(device.url).replace(/\/mcp\/?$/i, "/health")),
+        mcpToken: String(device.mcpToken || ""),
         enabled: true,
       })),
   };
@@ -263,6 +264,7 @@ class DeviceRouter {
           ? explicitUrl.replace(/\/mcp\/?$/i, "/health")
           : `http://127.0.0.1:${remotePort}/health`
       ),
+      mcpToken: String(input.mcpToken || "").trim(),
       enabled: true,
     };
     const index = raw.devices.findIndex((item) => cleanDeviceId(item?.id) === id);
@@ -352,9 +354,11 @@ class DeviceRouter {
   }
 
   async callDevice(device, message) {
+    const headers = { "content-type": "application/json" };
+    if (device.mcpToken) headers.authorization = `Bearer ${device.mcpToken}`;
     const response = await fetch(device.url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(message),
       signal: AbortSignal.timeout(35000),
     });
@@ -530,7 +534,7 @@ class DeviceRouter {
         return jsonRpc(id, {
           protocolVersion: "2025-03-26",
           capabilities: { tools: { listChanged: true } },
-          serverInfo: { name: "hanako-local-device-router", version: "0.8.0" },
+          serverInfo: { name: "hanako-local-device-router", version: "0.8.1" },
         });
       }
       if (message?.method === "notifications/initialized") return null;
@@ -627,7 +631,7 @@ async function main() {
         await router.refreshAll();
         return writeJson(res, 200, {
           ok: true,
-          version: "0.8.0",
+          version: "0.8.1",
           devices: router.publicDevices(),
           toolCount: deviceTools.length + (router.toolCache.tools || []).length,
           queue: {
@@ -657,7 +661,7 @@ async function main() {
   });
 
   await new Promise((resolve) => server.listen(PORT, HOST, resolve));
-  console.log(`[device-router] v0.8.0 listening on http://${HOST}:${PORT}/mcp`);
+  console.log(`[device-router] v0.8.1 listening on http://${HOST}:${PORT}/mcp`);
   for (const device of router.publicDevices()) {
     console.log(`[device-router] ${device.id}: ${device.online ? "online" : "offline"}`);
   }

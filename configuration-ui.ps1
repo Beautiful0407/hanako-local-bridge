@@ -34,7 +34,7 @@ $defaults = [ordered]@{
   DeviceName = $hostname
   RootPath = $defaultRoot
   VpsHost = "154.201.69.202"
-  CloudUrl = "ws://154.201.69.202/local-bridge/connect"
+  CloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
   SshUser = "root"
   IdentityFile = ""
   McpPort = 8787
@@ -54,7 +54,12 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
     if ($existing.device.name) { $defaults.DeviceName = [string]$existing.device.name }
     if ($writeRoot.path) { $defaults.RootPath = [string]$writeRoot.path }
     if ($existing.tunnel.server) { $defaults.VpsHost = [string]$existing.tunnel.server }
-    if ($existing.cloud.url) { $defaults.CloudUrl = [string]$existing.cloud.url }
+    if ($existing.cloud.url) {
+      $defaults.CloudUrl = [string]$existing.cloud.url
+      if ($defaults.CloudUrl -eq "ws://154.201.69.202/local-bridge/connect") {
+        $defaults.CloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
+      }
+    }
     if ($existing.tunnel.user) { $defaults.SshUser = [string]$existing.tunnel.user }
     if ($existing.tunnel.identityFile) { $defaults.IdentityFile = [string]$existing.tunnel.identityFile }
     if ($existing.filesystem.port) { $defaults.McpPort = [int]$existing.filesystem.port }

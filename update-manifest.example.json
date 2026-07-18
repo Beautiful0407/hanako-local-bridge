@@ -1,10 +1,12 @@
 {
   "schemaVersion": 1,
   "channel": "stable",
-  "version": "1.0.1",
-  "publishedAt": "2026-07-16T00:00:00Z",
-  "packageUrl": "HanakoLocalBridge-1.0.1-win-x64.zip",
+  "version": "1.4.0",
+  "publishedAt": "2026-07-18T00:00:00Z",
+  "packageUrl": "https://github.com/Beautiful0407/hanako--MCP-/releases/download/v1.4.0/HanakoLocalBridge-1.4.0-win-x64.zip",
   "sha256": "replace-with-release-sha256",
   "size": 0,
-  "notes": "Initial installable release."
+  "notes": "Hanako Local Bridge 1.4.0",
+  "signatureAlgorithm": "RSA-SHA256",
+  "signature": "replace-with-base64-signature"
 }

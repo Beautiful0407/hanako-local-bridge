@@ -1,6 +1,6 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.3.1`
+版本：`1.4.0`
 
 日期：`2026-07-18`
 
@@ -32,8 +32,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.3.1.exe
-release\HanakoLocalBridge-1.3.1-win-x64.zip
+release\HanakoLocalBridge-Setup-1.4.0.exe
+release\HanakoLocalBridge-1.4.0-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -42,7 +42,7 @@ release\update-manifest.json
 ```text
 Setup EXE：普通用户双击安装
 ZIP：更新器下载或离线更新
-Manifest：声明版本、ZIP 地址、大小和 SHA256
+Manifest：声明版本、ZIP 地址、大小、SHA256 和 RSA-SHA256 签名
 ```
 
 ## 3. 默认安装布局
@@ -88,7 +88,7 @@ logs\
 
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.3.1.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.4.0.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。
@@ -111,7 +111,7 @@ logs\
 ```text
 MCP：127.0.0.1:8787
 状态页：127.0.0.1:8788
-云端 WebSocket：ws://154.201.69.202/local-bridge/connect
+云端 WebSocket：wss://154-201-69-202.sslip.io/local-bridge/connect
 信任模式：full
 ```
 
@@ -170,7 +170,7 @@ logs\
   },
   "cloud": {
     "enabled": true,
-    "url": "ws://154.201.69.202/local-bridge/connect",
+    "url": "wss://154-201-69-202.sslip.io/local-bridge/connect",
     "reconnectMinSeconds": 3,
     "reconnectMaxSeconds": 60,
     "heartbeatSeconds": 25

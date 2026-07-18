@@ -7,22 +7,22 @@ backups.
 ## Components
 
 ```text
-Windows Bridge: 1.3.1
+Windows Bridge: 1.4.0
 Cloud Hana:     0.401.11 or compatible
-Device Router:  0.8.0
+Device Router:  0.8.1
 ```
 
 The Windows bridge actively connects to the cloud:
 
 ```text
 Windows Local Bridge
-  -> ws://<hana-host>/local-bridge/connect
+  -> wss://154-201-69-202.sslip.io/local-bridge/connect
   -> Cloud Hana LocalBridgeGateway
   -> Device Router on 127.0.0.1:18786
   -> local_fs / local_exec / local_device tools
 ```
 
-Use HTTPS/WSS with a trusted certificate for long-term production use.
+The production endpoint uses HTTPS/WSS with a trusted certificate and automatic Certbot renewal.
 
 ## Windows Configuration
 
@@ -60,7 +60,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 Expected state:
 
 ```text
-Bridge version: 1.3.1
+Bridge version: 1.4.0
 Cloud status: active
 MCP task: Running
 Legacy Tunnel task: Ready
@@ -128,9 +128,9 @@ location / {
 Verify all layers:
 
 ```text
-Windows /health reports version 1.3.1 and cloud.status=active
+Windows /health reports version 1.4.0 and cloud.status=active
 Cloud /api/local-bridge/devices reports the device online
-Router /health reports version 0.8.0 and the bridge online
+Router /health reports version 0.8.1 and the bridge online
 local_fs.read_text works through the router
 Stopping the Windows service makes the router report offline
 Starting the scheduled task restores active/online automatically

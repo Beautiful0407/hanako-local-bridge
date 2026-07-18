@@ -30,7 +30,7 @@
   },
   "cloud": {
     "enabled": true,
-    "url": "ws://154.201.69.202/local-bridge/connect",
+    "url": "wss://154-201-69-202.sslip.io/local-bridge/connect",
     "reconnectMinSeconds": 3,
     "reconnectMaxSeconds": 60,
     "heartbeatSeconds": 25
@@ -53,7 +53,7 @@
     "tunnelHealthSeconds": 30
   },
   "update": {
-    "manifest": "",
+    "manifest": "https://raw.githubusercontent.com/Beautiful0407/hanako--MCP-/main/update-manifest.json",
     "channel": "stable"
   }
 }

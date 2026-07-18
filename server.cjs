@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fsp = require("fs/promises");
 const path = require("path");
 
@@ -26,6 +27,7 @@ const CONFIG = RUNTIME.config;
 const HOST = envString(process.env, "LOCAL_FS_MCP_HOST", CONFIG.filesystem.host);
 const PORT = envNumber(process.env, "LOCAL_FS_MCP_PORT", CONFIG.filesystem.port);
 const APPROVAL_HOST = "127.0.0.1";
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 const APPROVAL_PORT = envNumber(
   process.env,
   "LOCAL_FS_MCP_APPROVAL_PORT",
@@ -159,10 +161,28 @@ function jsonRpcError(id, code, message, data) {
   };
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = MAX_REQUEST_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let totalBytes = 0;
+    const contentLength = Number(req.headers["content-length"] || 0);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      const error = new Error(`request body exceeds ${maxBytes} bytes`);
+      error.statusCode = 413;
+      reject(error);
+      return;
+    }
+    req.on("data", (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > maxBytes) {
+        const error = new Error(`request body exceeds ${maxBytes} bytes`);
+        error.statusCode = 413;
+        reject(error);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
@@ -171,14 +191,31 @@ function readBody(req) {
 function writeJson(res, status, data, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version, MCP-Session-Id",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     ...headers,
   });
   res.end(data === null || data === undefined ? "" : JSON.stringify(data));
+}
+
+function isLoopbackHost(req) {
+  const host = String(req.headers.host || "").trim().toLowerCase();
+  const hostname = host.startsWith("[")
+    ? host.slice(0, host.indexOf("]") + 1)
+    : host.split(":")[0];
+  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
+}
+
+function hasMcpToken(req, expectedToken) {
+  const authorization = String(req.headers.authorization || "");
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1] || "";
+  const headerToken = String(req.headers["x-hanako-bridge-token"] || "");
+  const supplied = bearer || headerToken;
+  if (!supplied || !expectedToken) return false;
+  const suppliedBytes = Buffer.from(supplied);
+  const expectedBytes = Buffer.from(expectedToken);
+  return suppliedBytes.length === expectedBytes.length
+    && crypto.timingSafeEqual(suppliedBytes, expectedBytes);
 }
 
 async function main() {
@@ -305,7 +342,9 @@ async function main() {
 
   const mcpServer = http.createServer(async (req, res) => {
     try {
+      if (!isLoopbackHost(req)) return writeJson(res, 403, { error: "localhost only" });
       const url = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
+      if (req.headers.origin) return writeJson(res, 403, { error: "browser origins are not allowed" });
       if (req.method === "OPTIONS") return writeJson(res, 204, null);
       if (req.method === "GET" && url.pathname === "/health") {
         return writeJson(res, 200, {
@@ -322,6 +361,14 @@ async function main() {
           cloud: cloudConnector.clientIdentity(),
         });
       }
+      if (url.pathname === "/mcp" && !hasMcpToken(req, access.approvalToken)) {
+        return writeJson(
+          res,
+          401,
+          { error: "invalid MCP token" },
+          { "WWW-Authenticate": "Bearer" },
+        );
+      }
       if (req.method === "DELETE" && url.pathname === "/mcp") return writeJson(res, 200, { ok: true });
       if (req.method !== "POST" || url.pathname !== "/mcp") return writeJson(res, 404, { error: "not found" });
 
@@ -334,7 +381,7 @@ async function main() {
       if (response === null) return writeJson(res, 202, null);
       return writeJson(res, 200, response, { "MCP-Session-Id": "hana-local-fs" });
     } catch (err) {
-      return writeJson(res, 500, { error: err.message || String(err) });
+      return writeJson(res, err.statusCode || 500, { error: err.message || String(err) });
     }
   });
 

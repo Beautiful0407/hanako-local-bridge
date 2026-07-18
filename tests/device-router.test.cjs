@@ -68,6 +68,9 @@ async function run() {
   const data = path.join(temp, "data");
   const logs = path.join(temp, "logs");
   await fsp.mkdir(root, { recursive: true });
+  await fsp.mkdir(data, { recursive: true });
+  const mcpToken = "router-test-token";
+  await fsp.writeFile(path.join(data, "approval-token.txt"), `${mcpToken}\n`, "utf8");
 
   const devicePort = 35000 + Math.floor(Math.random() * 500);
   const routerPort = devicePort + 500;
@@ -86,6 +89,7 @@ async function run() {
             name: "Router Test Device",
             url: `http://127.0.0.1:${devicePort}/mcp`,
             healthUrl: `http://127.0.0.1:${devicePort}/health`,
+            mcpToken,
             enabled: true,
           },
         ],
@@ -130,6 +134,7 @@ async function run() {
     assert.equal(health.ok, true);
     assert.equal(health.devices[0].id, "router-test");
     assert.equal(health.devices[0].online, true);
+    assert.equal(health.devices[0].mcpToken, undefined);
 
     const registration = await fetch(`${routerBase}/devices/register`, {
       method: "POST",
@@ -138,6 +143,7 @@ async function run() {
         id: "second-device",
         name: "Second Device",
         remotePort: devicePort,
+        mcpToken: "second-device-token",
       }),
     }).then((response) => response.json());
     assert.equal(registration.deviceId, "second-device");
@@ -146,6 +152,7 @@ async function run() {
     assert.ok(registeredConfig.devices.some((item) => (
       item.id === "second-device"
       && item.url === `http://127.0.0.1:${registration.remotePort}/mcp`
+      && item.mcpToken === "second-device-token"
     )));
     const websocketRegistration = await fetch(`${routerBase}/devices/register`, {
       method: "POST",

@@ -24,10 +24,13 @@ async function waitForHealth(base, child, output) {
   throw new Error(`timed out waiting for ${base}/health\n${output.stderr}`);
 }
 
-async function rpc(base, id, name, args = {}) {
+async function rpc(base, token, id, name, args = {}) {
   const response = await fetch(`${base}/mcp`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id,
@@ -70,10 +73,10 @@ async function stopServer(instance) {
   ]);
 }
 
-async function waitForJob(base, jobId) {
+async function waitForJob(base, token, jobId) {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    const response = await rpc(base, 900, "local_exec.job_status", { jobId });
+    const response = await rpc(base, token, 900, "local_exec.job_status", { jobId });
     const job = JSON.parse(textResult(response));
     if (!["starting", "running"].includes(job.status)) return job;
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -126,7 +129,8 @@ async function run() {
   let server;
   try {
     server = await startServer(env);
-    const request = await rpc(server.base, 1, "local_exec.request_run", {
+    const token = (await fsp.readFile(path.join(data, "approval-token.txt"), "utf8")).trim();
+    const request = await rpc(server.base, token, 1, "local_exec.request_run", {
       runtime: "powershell",
       scriptPath: script,
       arguments: ["after-restart"],
@@ -135,7 +139,7 @@ async function run() {
     const authorization = JSON.parse(textResult(request)).authorization;
     const started = JSON.parse(
       textResult(
-        await rpc(server.base, 2, "local_exec.run", {
+        await rpc(server.base, token, 2, "local_exec.run", {
           authorizationId: authorization.id,
         }),
       ),
@@ -151,13 +155,13 @@ async function run() {
 
     await new Promise((resolve) => setTimeout(resolve, 500));
     server = await startServer(env);
-    const recovered = await waitForJob(server.base, started.id);
+    const recovered = await waitForJob(server.base, token, started.id);
     assert.equal(recovered.status, "completed");
     assert.equal(recovered.exitCode, 0);
     assert.equal(recovered.recovered, true);
     assert.equal(recovered.pid, started.pid);
     const output = JSON.parse(
-      textResult(await rpc(server.base, 3, "local_exec.job_output", { jobId: started.id })),
+      textResult(await rpc(server.base, token, 3, "local_exec.job_output", { jobId: started.id })),
     );
     assert.match(output.stdout, /RECOVERED:after-restart/);
 

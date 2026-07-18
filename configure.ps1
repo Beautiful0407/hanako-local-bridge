@@ -22,6 +22,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
+$officialCloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
+$legacyCloudUrl = "ws://154.201.69.202/local-bridge/connect"
+$officialUpdateManifest = "https://raw.githubusercontent.com/Beautiful0407/hanako--MCP-/main/update-manifest.json"
 
 function Read-BridgeValue {
   param(
@@ -96,6 +99,9 @@ if ($RemotePort -le 0) { $RemotePort = [int]$config.tunnel.remotePort }
 if ([string]::IsNullOrWhiteSpace($CloudUrl)) {
   $CloudUrl = [string]$config.cloud.url
 }
+if ([string]::IsNullOrWhiteSpace($CloudUrl) -or $CloudUrl -eq $legacyCloudUrl) {
+  $CloudUrl = $officialCloudUrl
+}
 if ([string]::IsNullOrWhiteSpace($CloudUrl) -and -not [string]::IsNullOrWhiteSpace($VpsHost)) {
   $CloudUrl = "ws://${VpsHost}/local-bridge/connect"
 }
@@ -107,18 +113,47 @@ $config.filesystem.port = $McpPort
 $config.filesystem.approvalPort = $ApprovalPort
 $config.filesystem.trustMode = "full"
 $config.filesystem.allowChatAuthorization = $false
-$config.filesystem.roots = @(
-  [pscustomobject]@{
-    name = $RootName
-    path = $RootPath
-    mode = "read_write"
-  },
-  [pscustomobject]@{
-    name = "HanakoLocalBridge"
-    path = $installRoot
-    mode = "read"
+$updatedRoots = [System.Collections.Generic.List[object]]::new()
+$updatedRoots.Add([pscustomobject]@{
+  name = $RootName
+  path = $RootPath
+  mode = "read_write"
+})
+$currentRootPath = if ($currentRoot -and $currentRoot.path) {
+  [System.IO.Path]::GetFullPath(
+    [Environment]::ExpandEnvironmentVariables([string]$currentRoot.path)
+  )
+} else {
+  ""
+}
+foreach ($existingRoot in @($config.filesystem.roots)) {
+  if (-not $existingRoot.path) { continue }
+  $existingPath = [System.IO.Path]::GetFullPath(
+    [Environment]::ExpandEnvironmentVariables([string]$existingRoot.path)
+  )
+  if (
+    $existingPath.Equals($RootPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+    (
+      $currentRootPath -and
+      $existingPath.Equals($currentRootPath, [System.StringComparison]::OrdinalIgnoreCase)
+    ) -or
+    $existingPath.Equals($installRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+    [string]$existingRoot.name -eq "HanakoLocalBridge"
+  ) {
+    continue
   }
-)
+  $updatedRoots.Add([pscustomobject]@{
+    name = [string]$existingRoot.name
+    path = $existingPath
+    mode = if ([string]$existingRoot.mode -eq "read_write") { "read_write" } else { "read" }
+  })
+}
+$updatedRoots.Add([pscustomobject]@{
+  name = "HanakoLocalBridge"
+  path = $installRoot
+  mode = "read"
+})
+$config.filesystem.roots = @($updatedRoots)
 $config.storage.dataDir = "data"
 $config.storage.logDir = "logs"
 $config.cloud.enabled = -not $DisableCloud
@@ -137,6 +172,15 @@ if (-not [string]::IsNullOrWhiteSpace($IdentityFile)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($TaskPrefix)) {
   $config.service.taskPrefix = $TaskPrefix.Trim()
+}
+if ([string]::IsNullOrWhiteSpace($UpdateManifest)) {
+  $existingManifest = [string]$config.update.manifest
+  if (
+    [string]::IsNullOrWhiteSpace($existingManifest) -or
+    $existingManifest -match "(?i)\\Desktop\\Hanako-Local-FS-MCP-Bridge\\release\\update-manifest\.json$"
+  ) {
+    $UpdateManifest = $officialUpdateManifest
+  }
 }
 if (-not [string]::IsNullOrWhiteSpace($UpdateManifest)) {
   $config.update.manifest = $UpdateManifest.Trim()

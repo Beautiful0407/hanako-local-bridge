@@ -12,7 +12,7 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 . (Join-Path $projectRoot "manager-core.ps1")
 
 Assert-Manager `
-  ((ConvertTo-HanakoCloudWebBase "ws://154.201.69.202/local-bridge/connect") -eq "http://154.201.69.202") `
+  ((ConvertTo-HanakoCloudWebBase "wss://154-201-69-202.sslip.io/local-bridge/connect") -eq "https://154-201-69-202.sslip.io") `
   "WebSocket URL conversion failed."
 Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "https://example.test/desktop/?x=1") -eq "https://example.test") `

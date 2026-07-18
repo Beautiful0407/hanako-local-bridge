@@ -60,11 +60,15 @@ if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
 }
 $installerPath = [System.IO.Path]::GetFullPath($InstallerPath)
 $manifestPath = [System.IO.Path]::GetFullPath($ManifestPath)
+$releaseZip = Join-Path $projectRoot "release\HanakoLocalBridge-$($package.version)-win-x64.zip"
 if (-not (Test-Path -LiteralPath $installerPath -PathType Leaf)) { throw "Missing installer: $installerPath" }
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "Missing manifest: $manifestPath" }
+if (-not (Test-Path -LiteralPath $releaseZip -PathType Leaf)) { throw "Missing package: $releaseZip" }
 
 $testId = [Guid]::NewGuid().ToString("N").Substring(0, 10)
 $testRoot = Join-Path $env:TEMP "HanakoLocalBridgeSmoke-$testId"
+$localManifestPath = Join-Path $testRoot "local-update-manifest.json"
+$localPackagePath = Join-Path $testRoot "package.zip"
 $installRoot = Join-Path $testRoot "install"
 $fileRoot = Join-Path $testRoot "files"
 $taskPrefix = "Hanako Local Bridge Smoke $testId"
@@ -190,12 +194,22 @@ try {
 
   $marker = Join-Path $installRoot "data\installer-smoke-preserved.txt"
   [System.IO.File]::WriteAllText($marker, "preserve-me", [System.Text.UTF8Encoding]::new($false))
+  Copy-Item -LiteralPath $releaseZip -Destination $localPackagePath -Force
+  $localManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  $localManifest.packageUrl = "package.zip"
+  $localManifest.signatureAlgorithm = ""
+  $localManifest.signature = ""
+  [System.IO.File]::WriteAllText(
+    $localManifestPath,
+    ($localManifest | ConvertTo-Json -Depth 8),
+    [System.Text.UTF8Encoding]::new($false)
+  )
   & powershell.exe `
     -NoLogo `
     -NoProfile `
     -ExecutionPolicy Bypass `
     -File (Join-Path $installRoot "update.ps1") `
-    -Manifest $manifestPath `
+    -Manifest $localManifestPath `
     -Force
   if ($LASTEXITCODE -ne 0) { throw "Local manifest update failed with code $LASTEXITCODE." }
   if ((Get-Content -LiteralPath $marker -Raw) -ne "preserve-me") {
@@ -203,8 +217,6 @@ try {
   }
   Wait-BridgeHealth -Port $mcpPort | Out-Null
 
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-  $releaseZip = Join-Path (Split-Path -Parent $manifestPath) ([string]$manifest.packageUrl)
   Remove-Item Env:HANA_BRIDGE_NO_MIGRATE -ErrorAction SilentlyContinue
   $legacyRoot = Join-Path $testRoot "legacy"
   $migrationInstallRoot = Join-Path $testRoot "migration-install"

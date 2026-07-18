@@ -1,7 +1,9 @@
 param(
   [string]$OutputDir = "",
   [string]$NodePath = "",
-  [string]$PublishedAt = ""
+  [string]$PublishedAt = "",
+  [string]$PackageUrl = "",
+  [string]$SigningKeyPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +22,7 @@ function Assert-ChildPath {
 }
 
 $projectRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+. (Join-Path $projectRoot "update-signature.ps1")
 $package = Get-Content -LiteralPath (Join-Path $projectRoot "package.json") -Raw | ConvertFrom-Json
 $version = [string]$package.version
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
@@ -80,6 +83,8 @@ $rootFiles = @(
   "stop.ps1",
   "uninstall-background-service.ps1",
   "update-manifest.example.json",
+  "update-public-key.xml",
+  "update-signature.ps1",
   "update.ps1",
   "WINDOWS_INSTALLER_UPDATE_MANUAL.md"
 )
@@ -117,15 +122,35 @@ $publishedAtValue = if ([string]::IsNullOrWhiteSpace($PublishedAt)) {
 } else {
   ([DateTimeOffset]::Parse($PublishedAt)).ToUniversalTime().ToString("o")
 }
+if ([string]::IsNullOrWhiteSpace($PackageUrl)) {
+  $PackageUrl = Split-Path -Leaf $releaseZip
+}
 $manifest = [ordered]@{
   schemaVersion = 1
   channel = "stable"
   version = $version
   publishedAt = $publishedAtValue
-  packageUrl = Split-Path -Leaf $releaseZip
+  packageUrl = $PackageUrl
   sha256 = $hash
   size = $size
   notes = "Hanako Local Bridge $version"
+  signatureAlgorithm = "RSA-SHA256"
+  signature = ""
+}
+if ([string]::IsNullOrWhiteSpace($SigningKeyPath)) {
+  $SigningKeyPath = [string]$env:HANA_UPDATE_SIGNING_KEY
+}
+if ([string]::IsNullOrWhiteSpace($SigningKeyPath)) {
+  $SigningKeyPath = Join-Path $env:USERPROFILE ".hanako-update-signing\private-key.xml"
+}
+if (Test-Path -LiteralPath $SigningKeyPath -PathType Leaf) {
+  $manifest.signature = New-HanakoUpdateManifestSignature `
+    -ManifestData ([pscustomobject]$manifest) `
+    -PrivateKeyPath $SigningKeyPath
+} elseif ($PackageUrl -match "^https://") {
+  throw "Remote update manifests require HANA_UPDATE_SIGNING_KEY or -SigningKeyPath."
+} else {
+  $manifest.signatureAlgorithm = ""
 }
 $manifestPath = Join-Path $outputDir "update-manifest.json"
 [System.IO.File]::WriteAllText(

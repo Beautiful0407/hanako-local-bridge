@@ -62,12 +62,19 @@ try {
 
   $deviceId = [string]$config.device.id
   $deviceName = [string]$config.device.name
+  $mcpTokenPath = Join-Path ([string]$config.storage.dataDir) "approval-token.txt"
+  $mcpToken = if (Test-Path -LiteralPath $mcpTokenPath -PathType Leaf) {
+    (Get-Content -LiteralPath $mcpTokenPath -Raw).Trim()
+  } else {
+    ""
+  }
   if (-not [string]::IsNullOrWhiteSpace($deviceId)) {
     try {
       $registrationJson = @{
         id = $deviceId
         name = $deviceName
         remotePort = $remotePort
+        mcpToken = $mcpToken
       } | ConvertTo-Json -Compress
       $registrationBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($registrationJson))
       $registrationCommand = "printf '%s' '$registrationBase64' | base64 -d | curl -fsS --max-time 10 -X POST -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:18786/devices/register"

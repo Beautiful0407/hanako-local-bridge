@@ -7,6 +7,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
+. (Join-Path $PSScriptRoot "update-signature.ps1")
+$officialCloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
+$legacyCloudUrl = "ws://154.201.69.202/local-bridge/connect"
+$officialUpdateManifest = "https://raw.githubusercontent.com/Beautiful0407/hanako--MCP-/main/update-manifest.json"
 
 function Get-TextResource {
   param([string]$Source)
@@ -40,11 +44,20 @@ if ([string]::IsNullOrWhiteSpace($Manifest)) {
 if ([string]::IsNullOrWhiteSpace($Manifest)) {
   throw "No update manifest configured. Pass -Manifest <path-or-url>."
 }
-if ($Manifest -notmatch "^https?://") {
+if ($Manifest -match "^http://") {
+  throw "Remote update manifests must use HTTPS."
+}
+$manifestIsRemote = $Manifest -match "^https://"
+if (-not $manifestIsRemote) {
   $Manifest = [System.IO.Path]::GetFullPath($Manifest)
 }
 
 $manifestData = Get-TextResource -Source $Manifest | ConvertFrom-Json
+$publicKeyPath = Join-Path $installRoot "update-public-key.xml"
+Assert-HanakoUpdateManifestSignature `
+  -ManifestData $manifestData `
+  -PublicKeyPath $publicKeyPath `
+  -Required:$manifestIsRemote | Out-Null
 $currentPackage = Get-Content -LiteralPath (Join-Path $installRoot "package.json") -Raw | ConvertFrom-Json
 $currentVersion = [version]$currentPackage.version
 $targetVersion = [version]$manifestData.version
@@ -54,6 +67,9 @@ if (-not $Force -and $targetVersion -le $currentVersion) {
 }
 
 $packageSource = Resolve-Resource -Base $Manifest -Reference ([string]$manifestData.packageUrl)
+if ($packageSource -match "^http://") {
+  throw "Remote update packages must use HTTPS."
+}
 $tempRoot = Join-Path $env:TEMP "HanakoLocalBridgeUpdate-$PID-$([Guid]::NewGuid().ToString('N'))"
 $packageFile = Join-Path $tempRoot "package.zip"
 $stage = Join-Path $tempRoot "payload"
@@ -68,8 +84,16 @@ try {
 
   $actualHash = (Get-FileHash -LiteralPath $packageFile -Algorithm SHA256).Hash.ToLowerInvariant()
   $expectedHash = ([string]$manifestData.sha256).Trim().ToLowerInvariant()
+  if ($manifestIsRemote -and -not $expectedHash) {
+    throw "Remote update manifest is missing SHA256."
+  }
   if ($expectedHash -and $actualHash -ne $expectedHash) {
     throw "Update package SHA256 mismatch. Expected $expectedHash, got $actualHash."
+  }
+  $expectedSize = [long]$manifestData.size
+  $actualSize = (Get-Item -LiteralPath $packageFile).Length
+  if ($expectedSize -gt 0 -and $actualSize -ne $expectedSize) {
+    throw "Update package size mismatch. Expected $expectedSize, got $actualSize."
   }
 
   Expand-Archive -LiteralPath $packageFile -DestinationPath $stage -Force
@@ -133,9 +157,25 @@ try {
     -Force `
     -ErrorAction SilentlyContinue
 
-  if ($RememberManifest) {
-    $updatedRuntime = Get-BridgeRuntime -InstallRoot $installRoot
+  $updatedRuntime = Get-BridgeRuntime -InstallRoot $installRoot
+  $configChanged = $false
+  if ([string]$updatedRuntime.config.cloud.url -eq $legacyCloudUrl) {
+    $updatedRuntime.config.cloud.url = $officialCloudUrl
+    $configChanged = $true
+  }
+  $existingManifest = [string]$updatedRuntime.config.update.manifest
+  if (
+    $RememberManifest -or
+    [string]::IsNullOrWhiteSpace($existingManifest) -or
+    $existingManifest -match "(?i)\\Desktop\\Hanako-Local-FS-MCP-Bridge\\release\\update-manifest\.json$"
+  ) {
     $updatedRuntime.config.update.manifest = $Manifest
+    if (-not $RememberManifest -and -not $manifestIsRemote) {
+      $updatedRuntime.config.update.manifest = $officialUpdateManifest
+    }
+    $configChanged = $true
+  }
+  if ($configChanged) {
     Write-BridgeJson -Value $updatedRuntime.config -Path $updatedRuntime.configPath
   }
 

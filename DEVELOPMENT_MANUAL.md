@@ -1,5 +1,15 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
+## v1.4.0 安全入口、WSS 与签名更新
+
+`server.cjs` 的 `/mcp` 只接受 loopback Host、拒绝浏览器 Origin，并要求 `Authorization: Bearer <data\approval-token.txt>`。MCP 和审批接口请求体上限为 1 MiB。
+
+官方云端地址为 `wss://154-201-69-202.sslip.io/local-bridge/connect`。Nginx 使用公开证书代理到 `127.0.0.1:14500`，Certbot 定时任务负责续期。
+
+远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。
+
+配置保存只替换第一个读写根目录，并保留其他根目录。WinUI 管理器窗口尺寸限制在当前 Windows 工作区以内。
+
 ## v1.3.1 管理命令 JSON 边界修复
 
 WinUI 通过 `manager-command.ps1` 启动 PowerShell 子进程，并要求标准输出只包含一条压缩 JSON。`repair.ps1`、`stop.ps1` 和后台任务安装脚本会使用 `Write-Host` 输出 `Stopped ...`、`Installed background tasks ...` 等文字；这些内容进入标准输出后会导致 `System.Text.Json` 在第一个字母处报 `invalid start of a value`。
@@ -138,7 +148,7 @@ server/routes/local-bridge.ts
 desktop/src/react/services/local-bridge-device.ts
 ```
 
-Device Router `0.8.0` 的 `registerDevice()` 支持显式 `url` 和 `healthUrl`。WebSocket 设备注册为 Hana 进程的内部回环转发地址，不再分配 SSH 远端端口。
+Device Router `0.8.1` 的 `registerDevice()` 支持显式 `url`、`healthUrl` 和私有 `mcpToken`。WebSocket 设备注册为 Hana 进程的内部回环转发地址；旧 SSH 设备会转发 Bearer Token，但公开设备列表不会显示它。
 
 持久文件：
 

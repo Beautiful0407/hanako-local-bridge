@@ -66,14 +66,20 @@ public sealed partial class MainWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         _appWindow = AppWindow.GetFromWindowId(windowId);
         _appWindow.Title = "Hanako Local Bridge 管理器";
-        _appWindow.Resize(new SizeInt32(1180, 780));
 
         var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
         if (displayArea is not null)
         {
-            var x = displayArea.WorkArea.X + Math.Max(0, (displayArea.WorkArea.Width - 1180) / 2);
-            var y = displayArea.WorkArea.Y + Math.Max(0, (displayArea.WorkArea.Height - 780) / 2);
+            var width = Math.Min(1180, Math.Max(1, displayArea.WorkArea.Width));
+            var height = Math.Min(780, Math.Max(1, displayArea.WorkArea.Height));
+            _appWindow.Resize(new SizeInt32(width, height));
+            var x = displayArea.WorkArea.X + Math.Max(0, (displayArea.WorkArea.Width - width) / 2);
+            var y = displayArea.WorkArea.Y + Math.Max(0, (displayArea.WorkArea.Height - height) / 2);
             _appWindow.Move(new PointInt32(x, y));
+        }
+        else
+        {
+            _appWindow.Resize(new SizeInt32(1180, 780));
         }
 
         if (AppWindowTitleBar.IsCustomizationSupported())

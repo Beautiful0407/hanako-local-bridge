@@ -21,10 +21,13 @@ async function waitFor(url, child) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
-async function rpc(base, id, name, args = {}) {
+async function rpc(base, token, id, name, args = {}) {
   const response = await fetch(`${base}/mcp`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id,
@@ -101,10 +104,14 @@ async function run() {
     assert.equal(health.capabilities.approvalRequired, false);
     assert.equal(health.pendingRequests, 0);
     assert.equal(health.pendingExecutions, 0);
+    const token = (await fsp.readFile(path.join(data, "approval-token.txt"), "utf8")).trim();
 
     const toolsResponse = await fetch(`${base}/mcp`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
     }).then((response) => response.json());
     const tools = new Map(toolsResponse.result.tools.map((tool) => [tool.name, tool]));
@@ -113,13 +120,13 @@ async function run() {
     assert.equal(tools.get("local_fs.request_access").inputSchema.properties.userAuthorizationQuote, undefined);
     assert.equal(tools.get("local_exec.execute").inputSchema.properties.userAuthorizationQuote, undefined);
 
-    const listed = await rpc(base, 2, "local_fs.list", { path: root });
+    const listed = await rpc(base, token, 2, "local_fs.list", { path: root });
     const listedResult = JSON.parse(textResult(listed));
     assert.equal(listedResult.mode, "read_write");
     assert.ok(listedResult.entries.some((entry) => entry.name === "full-trust.ps1"));
 
     const directPath = path.join(data, "direct.txt");
-    const write = await rpc(base, 3, "local_fs.write_text", {
+    const write = await rpc(base, token, 3, "local_fs.write_text", {
       path: directPath,
       text: "full trust",
     });
@@ -127,13 +134,13 @@ async function run() {
     assert.equal(writeStat.size, 10);
     assert.equal(await fsp.readFile(directPath, "utf8"), "full trust");
 
-    const read = await rpc(base, 4, "local_fs.read_text", { path: directPath });
+    const read = await rpc(base, token, 4, "local_fs.read_text", { path: directPath });
     assert.equal(textResult(read), "full trust");
 
     const legacyAliasPath = `local://Bridge/full-trust-alias-${process.pid}.txt`;
     const legacyAliasRealPath = path.join(projectDir, `full-trust-alias-${process.pid}.txt`);
     try {
-      const aliasWrite = await rpc(base, 41, "local_fs.write_text", {
+      const aliasWrite = await rpc(base, token, 41, "local_fs.write_text", {
         path: legacyAliasPath,
         text: "legacy alias is writable in full trust",
       });
@@ -143,7 +150,7 @@ async function run() {
       await fsp.rm(legacyAliasRealPath, { force: true });
     }
 
-    const accessRequest = await rpc(base, 5, "local_fs.request_access", {
+    const accessRequest = await rpc(base, token, 5, "local_fs.request_access", {
       path: root,
       mode: "read_write",
     });
@@ -153,7 +160,7 @@ async function run() {
     assert.equal(accessResult.approvalRequired, false);
 
     const executionScriptPath = `device://full-trust-device/${powershellScript.replace(/\\/g, "/")}`;
-    const execution = await rpc(base, 6, "local_exec.execute", {
+    const execution = await rpc(base, token, 6, "local_exec.execute", {
       runtime: "powershell",
       scriptPath: executionScriptPath,
       arguments: ["direct"],
@@ -168,9 +175,9 @@ async function run() {
     assert.equal(executionResult.authorization.deviceId, "full-trust-device");
     assert.equal(executionResult.job.deviceId, "full-trust-device");
 
-    const runtimes = JSON.parse(textResult(await rpc(base, 7, "local_exec.runtimes", { refresh: true })));
+    const runtimes = JSON.parse(textResult(await rpc(base, token, 7, "local_exec.runtimes", { refresh: true })));
     if (runtimes.python.available) {
-      const pythonExecution = await rpc(base, 8, "local_exec.execute", {
+      const pythonExecution = await rpc(base, token, 8, "local_exec.execute", {
         runtime: "python",
         scriptPath: pythonScript,
         arguments: ["direct"],

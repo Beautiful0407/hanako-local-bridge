@@ -160,6 +160,7 @@
                 <Grid Grid.Row="1">
                     <ScrollViewer
                         x:Name="OverviewPage"
+                        HorizontalScrollBarVisibility="Auto"
                         VerticalScrollBarVisibility="Auto">
                         <Grid Padding="28,18,28,28">
                             <Grid.RowDefinitions>
@@ -452,7 +453,7 @@
                             <TextBox
                                 x:Name="CloudBaseUrlBox"
                                 Header="Hana 网页地址"
-                                PlaceholderText="http://154.201.69.202" />
+                                PlaceholderText="https://154-201-69-202.sslip.io" />
                             <PasswordBox
                                 x:Name="AccessKeyBox"
                                 Grid.Column="1"

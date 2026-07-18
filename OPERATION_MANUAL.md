@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## v1.3.1 WinUI 3 图形化管理器
+## v1.4.0 安全连接与图形化管理器
 
-安装或覆盖升级 `HanakoLocalBridge-Setup-1.3.1.exe` 后，从开始菜单打开：
+安装或覆盖升级 `HanakoLocalBridge-Setup-1.4.0.exe` 后，从开始菜单打开：
 
 ```text
 Hanako Local Bridge
@@ -39,6 +39,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
 
 管理器不会保存 Hana 网页访问密钥。诊断报告只包含 `credentialPresent` 和 `claimTokenPresent`，不会包含设备凭证、认领令牌、私钥或网页登录密钥。
 
+本地 `/mcp` 现在要求 `data\approval-token.txt` 中的 Bearer Token。云端 WebSocket 直接调用内部 RPC；旧 SSH 路由器会私下转发 token，设备列表、日志和诊断报告不会显示它。
+
 ## v1.2.0 当前运行方式
 
 正式安装目录：
@@ -50,7 +52,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
 本地桥现在主动连接：
 
 ```text
-ws://154.201.69.202/local-bridge/connect
+wss://154-201-69-202.sslip.io/local-bridge/connect
 ```
 
 不再需要：
@@ -66,7 +68,7 @@ ws://154.201.69.202/local-bridge/connect
 首次连接：
 
 1. 安装并启动本地桥。
-2. 在同一台电脑打开 `http://154.201.69.202/desktop/`。
+2. 在同一台电脑打开 `https://154-201-69-202.sslip.io/desktop/`。
 3. 输入 Hana 网页访问密钥登录。
 4. 网页自动读取本机身份并完成认领。
 5. 检查本地状态中的 `cloud.status` 是否变为 `active`。
@@ -99,7 +101,7 @@ cloud.claimToken: 空
 正式安装版本：1.2.0
 设备：laptop-hl78935t
 Cloud status：active
-Device Router：0.8.0 / online
+Device Router：0.8.1 / online
 Cloud Hana：0.401.11
 ```
 
@@ -162,7 +164,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
 
 ## 当前运行方式：完全信任
 
-当前部署版本为 `1.3.1`，后台服务启用：
+当前部署版本为 `1.4.0`，后台服务启用：
 
 ```text
 LOCAL_AGENT_TRUST_MODE=full
@@ -198,10 +200,10 @@ local_fs.access_status: disabled
 ## 1. 当前版本
 
 ```text
-Bridge version: 1.3.1
+Bridge version: 1.4.0
 Windows MCP:    http://127.0.0.1:8787/mcp
 Approval UI:   http://127.0.0.1:8788/
-Cloud WebSocket: ws://154.201.69.202/local-bridge/connect
+Cloud WebSocket: wss://154-201-69-202.sslip.io/local-bridge/connect
 Device Router: http://127.0.0.1:18786/mcp
 ```
 

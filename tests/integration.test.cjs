@@ -22,10 +22,13 @@ async function waitFor(url, child) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
-async function rpc(base, id, name, args = {}) {
+async function rpc(base, token, id, name, args = {}) {
   const response = await fetch(`${base}/mcp`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id,
@@ -47,10 +50,10 @@ function imageResult(response) {
   return response.result.content.find((block) => block.type === "image");
 }
 
-async function waitJob(base, jobId) {
+async function waitJob(base, token, jobId) {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    const response = await rpc(base, 900, "local_exec.job_status", { jobId });
+    const response = await rpc(base, token, 900, "local_exec.job_status", { jobId });
     const job = JSON.parse(textResult(response));
     if (!["starting", "running"].includes(job.status)) return job;
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -133,15 +136,18 @@ async function run() {
     const identityPreflight = await fetch(`${approvalBase}/api/client-identity`, {
       method: "OPTIONS",
       headers: {
-        Origin: "http://154.201.69.202",
+        Origin: "https://154-201-69-202.sslip.io",
         "Access-Control-Request-Private-Network": "true",
       },
     });
     assert.equal(identityPreflight.status, 200);
-    assert.equal(identityPreflight.headers.get("access-control-allow-origin"), "http://154.201.69.202");
+    assert.equal(
+      identityPreflight.headers.get("access-control-allow-origin"),
+      "https://154-201-69-202.sslip.io",
+    );
     assert.equal(identityPreflight.headers.get("access-control-allow-private-network"), "true");
     const clientIdentity = await fetch(`${approvalBase}/api/client-identity`, {
-      headers: { Origin: "http://154.201.69.202" },
+      headers: { Origin: "https://154-201-69-202.sslip.io" },
     }).then((response) => response.json());
     assert.equal(clientIdentity.device.id, "test-device");
     assert.equal(clientIdentity.device.name, "Integration Test Device");
@@ -151,11 +157,55 @@ async function run() {
     assert.equal(rejectedIdentity.status, 403);
     const token = (await fsp.readFile(path.join(data, "approval-token.txt"), "utf8")).trim();
 
-    const toolsResponse = await fetch(`${base}/mcp`, {
+    const unauthorizedMcp = await fetch(`${base}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1000, method: "tools/list", params: {} }),
+    });
+    assert.equal(unauthorizedMcp.status, 401);
+
+    const crossOriginMcp = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        Origin: "https://untrusted.example",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1001, method: "tools/list", params: {} }),
+    });
+    assert.equal(crossOriginMcp.status, 403);
+    assert.equal(crossOriginMcp.headers.get("access-control-allow-origin"), null);
+
+    const oversizedMcp = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: "x".repeat((1024 * 1024) + 1),
+    });
+    assert.equal(oversizedMcp.status, 413);
+
+    const oversizedApproval = await fetch(`${approvalBase}/api/requests/missing/approve`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-approval-token": token,
+      },
+      body: "x".repeat((1024 * 1024) + 1),
+    });
+    assert.equal(oversizedApproval.status, 413);
+
+    const toolsHttpResponse = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
-    }).then((response) => response.json());
+    });
+    const toolsResponse = await toolsHttpResponse.json();
+    assert.equal(toolsHttpResponse.status, 200, JSON.stringify(toolsResponse));
     const toolNames = toolsResponse.result.tools.map((tool) => tool.name);
     assert.ok(toolNames.includes("local_fs.request_access"));
     assert.ok(toolNames.includes("local_fs.write_text"));
@@ -176,7 +226,7 @@ async function run() {
     assert.ok(requestAccessTool.inputSchema.properties.userAuthorizationQuote);
     assert.ok(executeTool.inputSchema.properties.userAuthorizationQuote);
 
-    const imageResponse = await rpc(base, 114, "local_fs.read_image", {
+    const imageResponse = await rpc(base, token, 114, "local_fs.read_image", {
       path: "local://TestRoot/pixel.png",
     });
     const image = imageResult(imageResponse);
@@ -186,16 +236,16 @@ async function run() {
     assert.equal(imageMetadata.name, "pixel.png");
     assert.equal(imageMetadata.size, imageBytes.length);
 
-    const fakeImage = await rpc(base, 115, "local_fs.read_image", {
+    const fakeImage = await rpc(base, token, 115, "local_fs.read_image", {
       path: "local://TestRoot/fake.png",
     });
     assert.equal(fakeImage.error.data.code, "unsupported_image_format");
 
-    const runtimesResponse = await rpc(base, 100, "local_exec.runtimes", { refresh: true });
+    const runtimesResponse = await rpc(base, token, 100, "local_exec.runtimes", { refresh: true });
     const runtimes = JSON.parse(textResult(runtimesResponse));
     assert.equal(runtimes.powershell.available, true);
 
-    const powershellRequest = await rpc(base, 101, "local_exec.request_run", {
+    const powershellRequest = await rpc(base, token, 101, "local_exec.request_run", {
       runtime: "powershell",
       scriptPath: powershellScript,
       arguments: ["cloud-test"],
@@ -207,19 +257,19 @@ async function run() {
     assert.equal(powershellAuthorization.source, "chat_authorization");
     assert.equal(powershellAuthorization.usesRemaining, 1);
 
-    const powershellRun = await rpc(base, 102, "local_exec.run", {
+    const powershellRun = await rpc(base, token, 102, "local_exec.run", {
       authorizationId: powershellAuthorization.id,
     });
     const powershellJob = JSON.parse(textResult(powershellRun));
-    const powershellFinished = await waitJob(base, powershellJob.id);
+    const powershellFinished = await waitJob(base, token, powershellJob.id);
     assert.equal(powershellFinished.status, "completed");
     assert.equal(powershellFinished.exitCode, 0);
-    const powershellOutput = await rpc(base, 103, "local_exec.job_output", {
+    const powershellOutput = await rpc(base, token, 103, "local_exec.job_output", {
       jobId: powershellJob.id,
     });
     assert.match(JSON.parse(textResult(powershellOutput)).stdout, /PS:cloud-test/);
 
-    const oneStepExecution = await rpc(base, 113, "local_exec.execute", {
+    const oneStepExecution = await rpc(base, token, 113, "local_exec.execute", {
       runtime: "powershell",
       scriptPath: powershellScript,
       arguments: ["one-step"],
@@ -232,7 +282,7 @@ async function run() {
     assert.equal(oneStepResult.job.exitCode, 0);
     assert.match(oneStepResult.stdout, /PS:one-step/);
 
-    const localExecutionRequest = await rpc(base, 104, "local_exec.request_run", {
+    const localExecutionRequest = await rpc(base, token, 104, "local_exec.request_run", {
       runtime: "powershell",
       scriptPath: powershellScript,
       arguments: ["approval-test"],
@@ -253,21 +303,21 @@ async function run() {
       },
     );
     assert.equal(approvedExecution.status, 200, await approvedExecution.text());
-    const executionStatus = await rpc(base, 105, "local_exec.request_status", {
+    const executionStatus = await rpc(base, token, 105, "local_exec.request_status", {
       requestId: pendingExecution.id,
     });
     const approvedExecutionStatus = JSON.parse(textResult(executionStatus));
     assert.equal(approvedExecutionStatus.request.status, "approved");
     assert.ok(approvedExecutionStatus.authorization.id);
-    const approvedRun = await rpc(base, 106, "local_exec.run", {
+    const approvedRun = await rpc(base, token, 106, "local_exec.run", {
       authorizationId: approvedExecutionStatus.authorization.id,
     });
     const approvedJob = JSON.parse(textResult(approvedRun));
-    assert.equal((await waitJob(base, approvedJob.id)).status, "completed");
-    const approvedOutput = await rpc(base, 107, "local_exec.job_output", { jobId: approvedJob.id });
+    assert.equal((await waitJob(base, token, approvedJob.id)).status, "completed");
+    const approvedOutput = await rpc(base, token, 107, "local_exec.job_output", { jobId: approvedJob.id });
     assert.match(JSON.parse(textResult(approvedOutput)).stdout, /PS:approval-test/);
 
-    const changingRequest = await rpc(base, 108, "local_exec.request_run", {
+    const changingRequest = await rpc(base, token, 108, "local_exec.request_run", {
       runtime: "powershell",
       scriptPath: changingScript,
       timeoutSeconds: 30,
@@ -275,13 +325,13 @@ async function run() {
     });
     const changingAuthorization = JSON.parse(textResult(changingRequest)).authorization;
     await fsp.writeFile(changingScript, 'Write-Output "after"\n', "utf8");
-    const changedRun = await rpc(base, 109, "local_exec.run", {
+    const changedRun = await rpc(base, token, 109, "local_exec.run", {
       authorizationId: changingAuthorization.id,
     });
     assert.equal(changedRun.error.data.code, "script_sha256_mismatch");
 
     if (runtimes.python.available) {
-      const pythonRequest = await rpc(base, 110, "local_exec.request_run", {
+      const pythonRequest = await rpc(base, token, 110, "local_exec.request_run", {
         runtime: "python",
         scriptPath: pythonScript,
         arguments: ["cloud-python"],
@@ -289,16 +339,16 @@ async function run() {
         userAuthorizationQuote: `I authorize you to execute ${pythonScript} with argument cloud-python`,
       });
       const pythonAuthorization = JSON.parse(textResult(pythonRequest)).authorization;
-      const pythonRun = await rpc(base, 111, "local_exec.run", {
+      const pythonRun = await rpc(base, token, 111, "local_exec.run", {
         authorizationId: pythonAuthorization.id,
       });
       const pythonJob = JSON.parse(textResult(pythonRun));
-      assert.equal((await waitJob(base, pythonJob.id)).status, "completed");
-      const pythonOutput = await rpc(base, 112, "local_exec.job_output", { jobId: pythonJob.id });
+      assert.equal((await waitJob(base, token, pythonJob.id)).status, "completed");
+      const pythonOutput = await rpc(base, token, 112, "local_exec.job_output", { jobId: pythonJob.id });
       assert.match(JSON.parse(textResult(pythonOutput)).stdout, /PY:cloud-python/);
     }
 
-    const write = await rpc(base, 2, "local_fs.write_text", {
+    const write = await rpc(base, token, 2, "local_fs.write_text", {
       path: "local://TestRoot/hello.txt",
       text: "hello",
     });
@@ -307,25 +357,25 @@ async function run() {
     assert.equal(await fsp.readFile(path.join(root, "hello.txt"), "utf8"), "hello");
 
     const deviceRoot = `device://test-device/${root.replace(/\\/g, "/")}`;
-    const deviceWrite = await rpc(base, 201, "local_fs.write_text", {
+    const deviceWrite = await rpc(base, token, 201, "local_fs.write_text", {
       path: `${deviceRoot}/device-path.txt`,
       text: "device path",
     });
     assert.ok(deviceWrite.result, JSON.stringify(deviceWrite));
     assert.equal(await fsp.readFile(path.join(root, "device-path.txt"), "utf8"), "device path");
-    const wrongDevice = await rpc(base, 202, "local_fs.read_text", {
+    const wrongDevice = await rpc(base, token, 202, "local_fs.read_text", {
       path: `device://another-device/${root.replace(/\\/g, "/")}/device-path.txt`,
     });
     assert.equal(wrongDevice.error.data.code, "wrong_device");
 
-    const overwriteRejected = await rpc(base, 3, "local_fs.write_text", {
+    const overwriteRejected = await rpc(base, token, 3, "local_fs.write_text", {
       path: "local://TestRoot/hello.txt",
       text: "changed",
       overwrite: true,
     });
     assert.equal(overwriteRejected.error.data.code, "expected_sha256_required");
 
-    const overwritten = await rpc(base, 4, "local_fs.write_text", {
+    const overwritten = await rpc(base, token, 4, "local_fs.write_text", {
       path: "local://TestRoot/hello.txt",
       text: "changed",
       overwrite: true,
@@ -338,7 +388,7 @@ async function run() {
     const racePath = "local://TestRoot/concurrent.txt";
     const raceSeed = JSON.parse(
       textResult(
-        await rpc(base, 401, "local_fs.write_text", {
+        await rpc(base, token, 401, "local_fs.write_text", {
           path: racePath,
           text: "seed",
         }),
@@ -346,7 +396,7 @@ async function run() {
     );
     const raceResponses = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
-        rpc(base, 410 + index, "local_fs.write_text", {
+        rpc(base, token, 410 + index, "local_fs.write_text", {
           path: racePath,
           text: `winner-${index}`,
           overwrite: true,
@@ -364,7 +414,7 @@ async function run() {
     const createRacePath = "local://TestRoot/concurrent-create.txt";
     const createRaceResponses = await Promise.all(
       Array.from({ length: 6 }, (_, index) =>
-        rpc(base, 430 + index, "local_fs.write_text", {
+        rpc(base, token, 430 + index, "local_fs.write_text", {
           path: createRacePath,
           text: `creator-${index}`,
         }),
@@ -378,7 +428,7 @@ async function run() {
     const utf16Path = "local://TestRoot/utf16.txt";
     const utf16Write = JSON.parse(
       textResult(
-        await rpc(base, 450, "local_fs.write_text", {
+        await rpc(base, token, 450, "local_fs.write_text", {
           path: utf16Path,
           text: "alpha\r\nbeta\r\n",
           encoding: "utf16le",
@@ -390,11 +440,11 @@ async function run() {
     assert.equal(utf16Write.bom, true);
     const utf16Raw = await fsp.readFile(path.join(root, "utf16.txt"));
     assert.deepEqual([...utf16Raw.subarray(0, 2)], [0xff, 0xfe]);
-    assert.equal(textResult(await rpc(base, 451, "local_fs.read_text", { path: utf16Path })), "alpha\r\nbeta\r\n");
+    assert.equal(textResult(await rpc(base, token, 451, "local_fs.read_text", { path: utf16Path })), "alpha\r\nbeta\r\n");
 
     const lineResult = JSON.parse(
       textResult(
-        await rpc(base, 452, "local_fs.read_lines", {
+        await rpc(base, token, 452, "local_fs.read_lines", {
           path: utf16Path,
           startLine: 2,
           lineCount: 1,
@@ -409,7 +459,7 @@ async function run() {
 
     const appended = JSON.parse(
       textResult(
-        await rpc(base, 453, "local_fs.append_text", {
+        await rpc(base, token, 453, "local_fs.append_text", {
           path: utf16Path,
           text: "gamma\r\n",
         }),
@@ -418,13 +468,13 @@ async function run() {
     assert.equal(appended.encoding, "utf16le");
     assert.equal(appended.bom, true);
     assert.equal(
-      textResult(await rpc(base, 454, "local_fs.read_text", { path: utf16Path })),
+      textResult(await rpc(base, token, 454, "local_fs.read_text", { path: utf16Path })),
       "alpha\r\nbeta\r\ngamma\r\n",
     );
 
     const patched = JSON.parse(
       textResult(
-        await rpc(base, 455, "local_fs.apply_patch", {
+        await rpc(base, token, 455, "local_fs.apply_patch", {
           path: utf16Path,
           expectedSha256: appended.sha256,
           edits: [{ oldText: "beta", newText: "BETA", expectedOccurrences: 1 }],
@@ -434,11 +484,11 @@ async function run() {
     assert.equal(patched.replacements, 1);
     assert.equal(patched.encoding, "utf16le");
     assert.equal(
-      textResult(await rpc(base, 456, "local_fs.read_text", { path: utf16Path })),
+      textResult(await rpc(base, token, 456, "local_fs.read_text", { path: utf16Path })),
       "alpha\r\nBETA\r\ngamma\r\n",
     );
 
-    const patchMismatch = await rpc(base, 457, "local_fs.apply_patch", {
+    const patchMismatch = await rpc(base, token, 457, "local_fs.apply_patch", {
       path: utf16Path,
       expectedSha256: patched.sha256,
       edits: [{ oldText: "alpha", newText: "ALPHA", expectedOccurrences: 2 }],
@@ -448,7 +498,7 @@ async function run() {
     const appendRacePath = "local://TestRoot/append-race.txt";
     const appendRaceResponses = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
-        rpc(base, 460 + index, "local_fs.append_text", {
+        rpc(base, token, 460 + index, "local_fs.append_text", {
           path: appendRacePath,
           text: `[${index}]`,
         }),
@@ -465,7 +515,7 @@ async function run() {
     }
     const pageOne = JSON.parse(
       textResult(
-        await rpc(base, 480, "local_fs.list", {
+        await rpc(base, token, 480, "local_fs.list", {
           path: "local://TestRoot/paged",
           limit: 2,
         }),
@@ -476,7 +526,7 @@ async function run() {
     assert.ok(pageOne.nextCursor);
     const pageTwo = JSON.parse(
       textResult(
-        await rpc(base, 481, "local_fs.list", {
+        await rpc(base, token, 481, "local_fs.list", {
           path: "local://TestRoot/paged",
           limit: 2,
           cursor: pageOne.nextCursor,
@@ -486,7 +536,7 @@ async function run() {
     assert.equal(pageTwo.offset, 2);
     assert.equal(pageTwo.entries.length, 2);
     assert.equal(new Set([...pageOne.entries, ...pageTwo.entries].map((entry) => entry.name)).size, 4);
-    const invalidCursor = await rpc(base, 482, "local_fs.list", {
+    const invalidCursor = await rpc(base, token, 482, "local_fs.list", {
       path: "local://TestRoot/paged",
       cursor: "not-a-cursor",
     });
@@ -501,7 +551,7 @@ async function run() {
     await fsp.writeFile(path.join(searchDir, "skip", "hidden.txt"), "hidden", "utf8");
     const searchResult = JSON.parse(
       textResult(
-        await rpc(base, 483, "local_fs.search", {
+        await rpc(base, token, 483, "local_fs.search", {
           path: "local://TestRoot/search-area",
           glob: "**/*.txt",
           exclude: ["skip/**"],
@@ -518,7 +568,7 @@ async function run() {
     assert.equal(searchResult.truncated, false);
     const budgetedSearch = JSON.parse(
       textResult(
-        await rpc(base, 484, "local_fs.search", {
+        await rpc(base, token, 484, "local_fs.search", {
           path: "local://TestRoot/search-area",
           glob: "**/*",
           limit: 20,
@@ -532,19 +582,19 @@ async function run() {
 
     const watch = JSON.parse(
       textResult(
-        await rpc(base, 485, "local_fs.watch", {
+        await rpc(base, token, 485, "local_fs.watch", {
           path: "local://TestRoot",
           debounceMs: 0,
         }),
       ),
     );
-    await rpc(base, 486, "local_fs.write_text", {
+    await rpc(base, token, 486, "local_fs.write_text", {
       path: "local://TestRoot/watch-created.txt",
       text: "watch me",
     });
     const watchEvents = JSON.parse(
       textResult(
-        await rpc(base, 487, "local_fs.watch_events", {
+        await rpc(base, token, 487, "local_fs.watch_events", {
           watchId: watch.watchId,
           afterSequence: 0,
           waitMs: 5000,
@@ -553,38 +603,38 @@ async function run() {
     );
     assert.ok(watchEvents.events.some((event) => event.relativePath === "watch-created.txt"));
     const unwatch = JSON.parse(
-      textResult(await rpc(base, 488, "local_fs.unwatch", { watchId: watch.watchId })),
+      textResult(await rpc(base, token, 488, "local_fs.unwatch", { watchId: watch.watchId })),
     );
     assert.equal(unwatch.closed, true);
 
-    await rpc(base, 5, "local_fs.mkdir", {
+    await rpc(base, token, 5, "local_fs.mkdir", {
       path: "local://TestRoot/nested/folder",
       recursive: true,
     });
     assert.equal(fs.statSync(path.join(root, "nested", "folder")).isDirectory(), true);
 
-    await rpc(base, 6, "local_fs.copy", {
+    await rpc(base, token, 6, "local_fs.copy", {
       source: "local://TestRoot/hello.txt",
       destination: "local://TestRoot/nested/copied.txt",
     });
-    await rpc(base, 7, "local_fs.move", {
+    await rpc(base, token, 7, "local_fs.move", {
       source: "local://TestRoot/nested/copied.txt",
       destination: "local://TestRoot/nested/moved.txt",
     });
     assert.equal(await fsp.readFile(path.join(root, "nested", "moved.txt"), "utf8"), "changed");
 
-    const bridgeWrite = await rpc(base, 8, "local_fs.write_text", {
+    const bridgeWrite = await rpc(base, token, 8, "local_fs.write_text", {
       path: "local://Bridge/should-not-exist.txt",
       text: "blocked",
     });
     assert.ok(["write_not_authorized", "bridge_program_read_only"].includes(bridgeWrite.error.data.code));
 
-    const traversal = await rpc(base, 9, "local_fs.read_text", {
+    const traversal = await rpc(base, token, 9, "local_fs.read_text", {
       path: "local://TestRoot/../outside.txt",
     });
     assert.equal(traversal.error.data.code, "path_not_authorized");
 
-    const requestResponse = await rpc(base, 10, "local_fs.request_access", {
+    const requestResponse = await rpc(base, token, 10, "local_fs.request_access", {
       path: extra,
       mode: "read_write",
       name: "Extra",
@@ -603,14 +653,14 @@ async function run() {
     });
     assert.equal(approved.status, 200, await approved.text());
 
-    const extraWrite = await rpc(base, 11, "local_fs.write_text", {
+    const extraWrite = await rpc(base, token, 11, "local_fs.write_text", {
       path: "local://Extra/from-cloud.txt",
       text: "approved",
     });
     textResult(extraWrite);
     assert.equal(await fsp.readFile(path.join(extra, "from-cloud.txt"), "utf8"), "approved");
 
-    const missingExactPath = await rpc(base, 12, "local_fs.request_access", {
+    const missingExactPath = await rpc(base, token, 12, "local_fs.request_access", {
       path: chatExtra,
       mode: "read",
       name: "BadChatGrant",
@@ -618,7 +668,7 @@ async function run() {
     });
     assert.equal(missingExactPath.error.data.code, "authorization_path_not_confirmed");
 
-    const chatAuthorization = await rpc(base, 13, "local_fs.request_access", {
+    const chatAuthorization = await rpc(base, token, 13, "local_fs.request_access", {
       path: chatExtra,
       mode: "read_write",
       name: "ChatExtra",
@@ -629,14 +679,14 @@ async function run() {
     assert.equal(chatGrant.source, "chat_authorization");
     assert.ok(chatGrant.expiresAt);
 
-    const chatWrite = await rpc(base, 14, "local_fs.write_text", {
+    const chatWrite = await rpc(base, token, 14, "local_fs.write_text", {
       path: "local://ChatExtra/chat-authorized.txt",
       text: "automatic",
     });
     textResult(chatWrite);
     assert.equal(await fsp.readFile(path.join(chatExtra, "chat-authorized.txt"), "utf8"), "automatic");
 
-    const trash = await rpc(base, 15, "local_fs.delete_to_trash", {
+    const trash = await rpc(base, token, 15, "local_fs.delete_to_trash", {
       path: "local://TestRoot/nested/moved.txt",
     });
     const trashResult = JSON.parse(textResult(trash));

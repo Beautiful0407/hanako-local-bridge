@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.0 - 2026-07-18
+
+- Added Bearer-token authentication to the loopback MCP endpoint, rejected browser Origin requests, validated loopback Host headers, and limited MCP and approval request bodies to 1 MiB.
+- Added private MCP-token forwarding for the legacy SSH device router without exposing tokens in device-list responses.
+- Migrated the official cloud endpoint from plaintext WebSocket to trusted `wss://154-201-69-202.sslip.io`.
+- Preserved secondary configured filesystem roots when saving settings.
+- Made the WinUI manager fit the current Windows work area and enabled overview scrolling on compact displays.
+- Added RSA-SHA256 signatures for remote update manifests, enforced HTTPS, SHA256, and package-size verification, and embedded only the public signing key.
+- Switched the official update source to the GitHub-managed stable manifest.
+- Added configuration, update-signature, MCP authentication, Origin, body-limit, and routed-token regression coverage.
+
 ## 1.3.1 - 2026-07-18
 
 - Fixed WinUI repair/start/stop/restart actions failing JSON parsing when PowerShell emitted status text before the result.
