@@ -52,6 +52,158 @@ function Get-HanakoBridgeUpdateStatus {
   }
 }
 
+function Get-HanakoBridgeUpdateStatePath {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$StatePath = ""
+  )
+
+  if (-not [string]::IsNullOrWhiteSpace($StatePath)) {
+    return [System.IO.Path]::GetFullPath($StatePath)
+  }
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  return Join-Path $root "data\update-state.json"
+}
+
+function Read-HanakoBridgeUpdateState {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$StatePath = ""
+  )
+
+  $path = Get-HanakoBridgeUpdateStatePath -InstallRoot $InstallRoot -StatePath $StatePath
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+  Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+}
+
+function Start-HanakoBridgeUpdate {
+  param(
+    [Parameter(Mandatory = $true)][string]$Manifest,
+    [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$StatePath = "",
+    [int]$HandoffTimeoutSeconds = 10
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $launcher = Join-Path $root "update-and-restart.ps1"
+  if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+    throw "Online update launcher is missing: $launcher"
+  }
+  if ([string]::IsNullOrWhiteSpace($Manifest)) {
+    throw "Update manifest is required."
+  }
+  if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+    throw "Expected update version is required."
+  }
+
+  $attemptId = [Guid]::NewGuid().ToString("N")
+  $stateFile = Get-HanakoBridgeUpdateStatePath -InstallRoot $root -StatePath $StatePath
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFile) | Out-Null
+  Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
+
+  $powershell = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+  $arguments = @(
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    $launcher,
+    "-InstallRoot",
+    $root,
+    "-Manifest",
+    $Manifest,
+    "-AttemptId",
+    $attemptId,
+    "-ExpectedVersion",
+    $ExpectedVersion,
+    "-StatePath",
+    $stateFile
+  )
+  $argumentLine = ($arguments | ForEach-Object {
+    ConvertTo-BridgeNativeArgument -Value ([string]$_)
+  }) -join " "
+
+  $process = Start-Process `
+    -FilePath $powershell `
+    -ArgumentList $argumentLine `
+    -WindowStyle Hidden `
+    -PassThru
+  try {
+    $deadline = (Get-Date).AddSeconds([Math]::Max(2, $HandoffTimeoutSeconds))
+    do {
+      $state = Read-HanakoBridgeUpdateState -InstallRoot $root -StatePath $stateFile
+      if ($state -and [string]$state.attemptId -eq $attemptId) {
+        $status = [string]$state.status
+        if ($status -in @("running", "succeeded", "failed")) {
+          return [pscustomobject]@{
+            started = $true
+            attemptId = $attemptId
+            status = $status
+            processId = $process.Id
+            expectedVersion = $ExpectedVersion
+            statePath = $stateFile
+          }
+        }
+      }
+      if ($process.HasExited) {
+        throw "Online update launcher exited before confirming handoff (code $($process.ExitCode))."
+      }
+      Start-Sleep -Milliseconds 150
+    } while ((Get-Date) -lt $deadline)
+    throw "Timed out waiting for the online update process to take control."
+  } finally {
+    $process.Dispose()
+  }
+}
+
+function Get-HanakoBridgeUpdateResult {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$StatePath = "",
+    [switch]$Consume
+  )
+
+  $stateFile = Get-HanakoBridgeUpdateStatePath -InstallRoot $InstallRoot -StatePath $StatePath
+  $state = Read-HanakoBridgeUpdateState -InstallRoot $InstallRoot -StatePath $stateFile
+  if (-not $state) {
+    return [pscustomobject]@{
+      present = $false
+      status = "none"
+      attemptId = ""
+      expectedVersion = ""
+      installedVersion = ""
+      message = ""
+      logPath = ""
+      startedAt = ""
+      finishedAt = ""
+      exitCode = 0
+    }
+  }
+
+  $status = [string]$state.status
+  $result = [pscustomobject]@{
+    present = $true
+    status = $status
+    attemptId = [string]$state.attemptId
+    expectedVersion = [string]$state.expectedVersion
+    installedVersion = [string]$state.installedVersion
+    message = [string]$state.message
+    logPath = [string]$state.logPath
+    startedAt = [string]$state.startedAt
+    finishedAt = [string]$state.finishedAt
+    exitCode = [int]$state.exitCode
+  }
+  if ($Consume -and $status -in @("succeeded", "failed")) {
+    Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
+  }
+  return $result
+}
+
 function ConvertTo-HanakoCloudWebBase {
   param([string]$CloudUrl)
 

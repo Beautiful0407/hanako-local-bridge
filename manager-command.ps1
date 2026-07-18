@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("snapshot", "action", "cloud-query", "logs", "log-tail", "update-check")]
+  [ValidateSet("snapshot", "action", "cloud-query", "logs", "log-tail", "update-check", "update-launch", "update-result")]
   [string]$Operation = "snapshot",
   [string]$InstallRoot = $PSScriptRoot,
   [string]$ConfigPath = ""
@@ -56,6 +56,21 @@ try {
           -ConfigPath $ConfigPath `
           -Manifest ([string]$env:HANA_MANAGER_UPDATE_MANIFEST)
       }
+      "update-launch" {
+        Start-HanakoBridgeUpdate `
+          -InstallRoot $InstallRoot `
+          -Manifest ([string]$env:HANA_MANAGER_UPDATE_MANIFEST) `
+          -ExpectedVersion ([string]$env:HANA_MANAGER_UPDATE_EXPECTED_VERSION)
+      }
+      "update-result" {
+        $arguments = @{
+          InstallRoot = $InstallRoot
+        }
+        if ([string]$env:HANA_MANAGER_UPDATE_CONSUME -eq "1") {
+          $arguments.Consume = $true
+        }
+        Get-HanakoBridgeUpdateResult @arguments
+      }
     }
   } 3>$null 4>$null 5>$null 6>$null
 
@@ -66,4 +81,7 @@ try {
   exit 1
 } finally {
   Remove-Item Env:HANA_MANAGER_ACCESS_KEY -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_MANIFEST -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_EXPECTED_VERSION -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_CONSUME -ErrorAction SilentlyContinue
 }

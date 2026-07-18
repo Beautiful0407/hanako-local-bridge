@@ -39,6 +39,45 @@ function Get-HanakoBridgeUpdateStatus {
     signatureVerified = $true
   }
 }
+
+function Start-HanakoBridgeUpdate {
+  param(
+    [string]$InstallRoot,
+    [string]$Manifest,
+    [string]$ExpectedVersion
+  )
+
+  [pscustomobject]@{
+    started = $true
+    attemptId = "manager-command-update-attempt"
+    status = "running"
+    processId = 4321
+    expectedVersion = $ExpectedVersion
+    statePath = (Join-Path $InstallRoot "data\update-state.json")
+    manifest = $Manifest
+  }
+}
+
+function Get-HanakoBridgeUpdateResult {
+  param(
+    [string]$InstallRoot,
+    [switch]$Consume
+  )
+
+  [pscustomobject]@{
+    present = $true
+    status = "succeeded"
+    attemptId = "manager-command-update-attempt"
+    expectedVersion = "1.4.9"
+    installedVersion = "1.4.9"
+    message = "Update completed successfully."
+    logPath = (Join-Path $InstallRoot "logs\update.log")
+    startedAt = "2026-07-18T00:00:00Z"
+    finishedAt = "2026-07-18T00:01:00Z"
+    exitCode = 0
+    consumed = [bool]$Consume
+  }
+}
 '@
   [System.IO.File]::WriteAllText(
     (Join-Path $testRoot "manager-core.ps1"),
@@ -90,9 +129,60 @@ function Get-HanakoBridgeUpdateStatus {
   ) {
     throw "manager-command update-check JSON result was incorrect."
   }
+
+  $env:HANA_MANAGER_UPDATE_MANIFEST = "https://example.test/update-manifest.json"
+  $env:HANA_MANAGER_UPDATE_EXPECTED_VERSION = "1.4.9"
+  $launchRaw = @(
+    & powershell.exe `
+      -NoLogo `
+      -NoProfile `
+      -NonInteractive `
+      -ExecutionPolicy Bypass `
+      -File $commandScript `
+      -Operation update-launch `
+      -InstallRoot $testRoot
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "manager-command update-launch exited with code $LASTEXITCODE."
+  }
+  $launchResult = ([string]$launchRaw[0]) | ConvertFrom-Json
+  if (
+    $launchResult.started -ne $true -or
+    $launchResult.status -ne "running" -or
+    $launchResult.expectedVersion -ne "1.4.9"
+  ) {
+    throw "manager-command update-launch JSON result was incorrect."
+  }
+
+  $env:HANA_MANAGER_UPDATE_CONSUME = "1"
+  $resultRaw = @(
+    & powershell.exe `
+      -NoLogo `
+      -NoProfile `
+      -NonInteractive `
+      -ExecutionPolicy Bypass `
+      -File $commandScript `
+      -Operation update-result `
+      -InstallRoot $testRoot
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "manager-command update-result exited with code $LASTEXITCODE."
+  }
+  $updateOutcome = ([string]$resultRaw[0]) | ConvertFrom-Json
+  if (
+    $updateOutcome.present -ne $true -or
+    $updateOutcome.status -ne "succeeded" -or
+    $updateOutcome.installedVersion -ne "1.4.9" -or
+    $updateOutcome.consumed -ne $true
+  ) {
+    throw "manager-command update-result JSON result was incorrect."
+  }
   Write-Host "manager command tests passed"
 } finally {
   Remove-Item Env:HANA_MANAGER_ACTION -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_MANIFEST -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_EXPECTED_VERSION -ErrorAction SilentlyContinue
+  Remove-Item Env:HANA_MANAGER_UPDATE_CONSUME -ErrorAction SilentlyContinue
   $resolvedTemp = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd("\") + "\"
   $resolvedTestRoot = [System.IO.Path]::GetFullPath($testRoot)
   if ($resolvedTestRoot.StartsWith($resolvedTemp, [System.StringComparison]::OrdinalIgnoreCase)) {

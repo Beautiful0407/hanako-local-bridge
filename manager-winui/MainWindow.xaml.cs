@@ -115,6 +115,7 @@ public sealed partial class MainWindow : Window
                 Environment.Exit(0);
                 return;
             }
+            await ShowPendingUpdateResultAsync();
             if (!IsPollingPausedPage(_selectedPageTag))
             {
                 _refreshTimer.Start();
@@ -363,6 +364,45 @@ public sealed partial class MainWindow : Window
         GlobalInfoBar.IsOpen = true;
     }
 
+    private async Task ShowPendingUpdateResultAsync()
+    {
+        try
+        {
+            var result = await _service.ConsumeUpdateResultAsync();
+            if (!result.Present) return;
+
+            if (result.Status == "succeeded")
+            {
+                var version = string.IsNullOrWhiteSpace(result.InstalledVersion)
+                    ? result.ExpectedVersion
+                    : result.InstalledVersion;
+                UpdateStatusText.Text = $"已成功更新到 {version}";
+                ShowInfo(
+                    "在线更新完成",
+                    $"Hanako Local Bridge 已成功更新到 {version}。",
+                    InfoBarSeverity.Success);
+                return;
+            }
+
+            if (result.Status == "failed")
+            {
+                var message = string.IsNullOrWhiteSpace(result.Message)
+                    ? "更新未完成。"
+                    : result.Message;
+                if (!string.IsNullOrWhiteSpace(result.LogPath))
+                {
+                    message += $" 日志：{result.LogPath}";
+                }
+                UpdateStatusText.Text = "上次在线更新失败";
+                ShowInfo("在线更新失败", message, InfoBarSeverity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowInfo("读取更新结果失败", ex.Message, InfoBarSeverity.Warning);
+        }
+    }
+
     private async Task RunActionAsync(string action, string label)
     {
         if (_busy) return;
@@ -493,8 +533,17 @@ public sealed partial class MainWindow : Window
         SetBusy(true, "正在启动在线更新...");
         try
         {
-            await _service.StartUpdateAsync(_updateStatus.Manifest);
-            ShowInfo("在线更新", "更新程序已启动，管理器将在更新完成后自动重新打开。", InfoBarSeverity.Informational);
+            var launch = await _service.StartUpdateAsync(
+                _updateStatus.Manifest,
+                _updateStatus.LatestVersion);
+            if (!launch.Started)
+            {
+                throw new InvalidOperationException("更新进程没有确认接管。");
+            }
+            ShowInfo(
+                "在线更新",
+                $"版本 {_updateStatus.LatestVersion} 已开始安装，完成后管理器会自动重新打开并显示结果。",
+                InfoBarSeverity.Informational);
             await Task.Delay(500);
             ExitFromTray();
         }

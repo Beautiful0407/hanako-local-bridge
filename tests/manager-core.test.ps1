@@ -13,6 +13,7 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 
 $managerXaml = Get-Content -LiteralPath (Join-Path $projectRoot "manager-winui\MainWindow.xaml") -Raw -Encoding UTF8
 $managerSource = Get-Content -LiteralPath (Join-Path $projectRoot "manager-winui\MainWindow.xaml.cs") -Raw -Encoding UTF8
+$managerServiceSource = Get-Content -LiteralPath (Join-Path $projectRoot "manager-winui\BridgeCommandService.cs") -Raw -Encoding UTF8
 Assert-Manager ($managerXaml.Contains('x:Name="QueryDevicesButton"')) "Cloud query button is not addressable by busy state."
 Assert-Manager ($managerXaml.Contains('x:Name="ClaimDeviceButton"')) "Cloud claim button is not addressable by busy state."
 Assert-Manager ($managerSource.Contains("QueryDevicesButton.IsEnabled = !busy;")) "Busy state does not disable cloud query."
@@ -22,6 +23,10 @@ Assert-Manager ($managerSource.Contains('tag is "devices" or "settings"')) "Clou
 Assert-Manager `
   ($managerSource -match 'if \(_busy\)\s*\{\s*ShowInfo\([^;]+InfoBarSeverity\.Informational\);\s*return;\s*\}') `
   "Busy cloud actions can still fail silently."
+Assert-Manager ($managerSource.Contains("await ShowPendingUpdateResultAsync();")) "Manager does not display detached update results."
+Assert-Manager ($managerSource.Contains("_updateStatus.LatestVersion")) "Update launch does not pass the expected version."
+Assert-Manager ($managerServiceSource.Contains('RunAsync<UpdateLaunchResult>')) "Update launch bypasses the verified manager command."
+Assert-Manager ($managerServiceSource.Contains('"update-result"')) "Manager cannot consume the final update result."
 
 Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "wss://154-201-69-202.sslip.io/local-bridge/connect") -eq "https://154-201-69-202.sslip.io") `

@@ -124,6 +124,30 @@ public sealed class UpdateStatus
     public bool SignatureVerified { get; set; }
 }
 
+public sealed class UpdateLaunchResult
+{
+    public bool Started { get; set; }
+    public string AttemptId { get; set; } = "";
+    public string Status { get; set; } = "";
+    public int ProcessId { get; set; }
+    public string ExpectedVersion { get; set; } = "";
+    public string StatePath { get; set; } = "";
+}
+
+public sealed class UpdateResult
+{
+    public bool Present { get; set; }
+    public string Status { get; set; } = "none";
+    public string AttemptId { get; set; } = "";
+    public string ExpectedVersion { get; set; } = "";
+    public string InstalledVersion { get; set; } = "";
+    public string Message { get; set; } = "";
+    public string LogPath { get; set; } = "";
+    public string StartedAt { get; set; } = "";
+    public string FinishedAt { get; set; } = "";
+    public int ExitCode { get; set; }
+}
+
 public sealed class LogFileItem
 {
     public string Name { get; set; } = "";

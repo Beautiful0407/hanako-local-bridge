@@ -36,47 +36,35 @@ public sealed class BridgeCommandService
             cancellationToken);
     }
 
-    public Task StartUpdateAsync(
-        string? manifest = null,
+    public Task<UpdateLaunchResult> StartUpdateAsync(
+        string manifest,
+        string expectedVersion,
         CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var script = Path.Combine(_installRoot, "update-and-restart.ps1");
-        if (!File.Exists(script))
+        var environment = new Dictionary<string, string?>
         {
-            throw new FileNotFoundException("在线更新启动器不存在。", script);
-        }
-
-        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-        var powershell = Path.Combine(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = powershell,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = _installRoot
+            ["HANA_MANAGER_UPDATE_MANIFEST"] = manifest,
+            ["HANA_MANAGER_UPDATE_EXPECTED_VERSION"] = expectedVersion
         };
-        startInfo.ArgumentList.Add("-NoLogo");
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-ExecutionPolicy");
-        startInfo.ArgumentList.Add("Bypass");
-        startInfo.ArgumentList.Add("-WindowStyle");
-        startInfo.ArgumentList.Add("Hidden");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(script);
-        startInfo.ArgumentList.Add("-InstallRoot");
-        startInfo.ArgumentList.Add(_installRoot);
-        if (!string.IsNullOrWhiteSpace(manifest))
-        {
-            startInfo.ArgumentList.Add("-Manifest");
-            startInfo.ArgumentList.Add(manifest);
-        }
+        return RunAsync<UpdateLaunchResult>(
+            "update-launch",
+            environment,
+            TimeSpan.FromSeconds(15),
+            cancellationToken);
+    }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("无法启动在线更新。");
-        process.Dispose();
-        return Task.CompletedTask;
+    public Task<UpdateResult> ConsumeUpdateResultAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var environment = new Dictionary<string, string?>
+        {
+            ["HANA_MANAGER_UPDATE_CONSUME"] = "1"
+        };
+        return RunAsync<UpdateResult>(
+            "update-result",
+            environment,
+            TimeSpan.FromSeconds(12),
+            cancellationToken);
     }
 
     public async Task<T> RunAsync<T>(

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.9 - 2026-07-18
+
+- Added a verified handoff between the manager and the detached online updater before the manager exits.
+- Persist update success or failure, verify the installed version, and show the result when the manager reopens.
+- Keep the manager open with an actionable error when the updater cannot start instead of silently appearing to do nothing.
+
 ## 1.4.8 - 2026-07-18
 
 - Added a signed-release payload inventory and remove obsolete managed files during online updates and overwrite installations.
