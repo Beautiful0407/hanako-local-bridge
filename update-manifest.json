@@ -1,12 +1,12 @@
 {
     "schemaVersion":  1,
     "channel":  "stable",
-    "version":  "1.4.0",
-    "publishedAt":  "2026-07-18T04:30:00.0000000+00:00",
-    "packageUrl":  "https://github.com/Beautiful0407/hanako--MCP-/releases/download/v1.4.0/HanakoLocalBridge-1.4.0-win-x64.zip",
-    "sha256":  "5dda654f2154c55c1e8c61c9339c7bfe111d3333400195a9037a097fa410ffef",
-    "size":  123847555,
-    "notes":  "Hanako Local Bridge 1.4.0",
+    "version":  "1.4.1",
+    "publishedAt":  "2026-07-18T05:05:12.0249500Z",
+    "packageUrl":  "https://154-201-69-202.sslip.io/local-bridge/releases/HanakoLocalBridge-1.4.1-win-x64.zip",
+    "sha256":  "e57458d813cece304fd343e661832d6934444ac410ed5ca6431686fcabc2ab10",
+    "size":  123847680,
+    "notes":  "Hanako Local Bridge 1.4.1",
     "signatureAlgorithm":  "RSA-SHA256",
-    "signature":  "NtO2BH/QcHehtPR77blId1LnVtORg6TQxtNKhmz1qz4li5zn+2fb/qb2fYFD3uYr/XJ5ookG5SSAllmbREfTvenaydjCYb72QdWq5bawCE8LN5xSUlxfF+4/c3/HUfR4XKHMw7WXogGS2FCRj6wZggpwC0GfNJrxvDO0QM4DY0okQS/t3agg0W/qd0dt5B+ESombbxRB2x6xDkHqIp30G9OsbxXkqeTOc9IeqGtE6sIlzQYh84M6n9kGCog/E9m6R3zraIDSl9zO1tHXzLV0jqcDaQmF/m3WoPvDX93PdImpod5OYl3GnWH+S8H7XU8SBUo53aPRenr9JZHT6CwYQP7stIviDrfT5aqLgVzsVxP8o3gk+Ju3eOYhQGb5wZF6bhd3aIcIYtcsBRaGqjNGjvqHTHW7ZMSJsOlvC+pM6o8V9HpI9EnLSzWMR6HU0Y/oTyc5r3CBHaTnKsSEp2PDpOUuyAmNzX2JLS7uYkQTotmnnZQRppHuA0jCCdjggGii"
+    "signature":  "F1wRDHsmgj6h4lRctbNA7//7MlIxAXbUSd81aWjc0jnQYGAs5S+5HVRmdWEE09Jv+k3KoIDyMIeYFXt0e1y0hGcx00pQJV/WpJMU0yRyl71/cHFjjY1DedvgQL7dfpYyXjL4SHvvHP0b1NAtY43eymDuFTvVE6Om7brAcZT+OIVc/S0tdgRdKnPIxj5pUo5nVHTHs+1FhBEK3MUpZA7m2RxewzvFkPL81U2xzHnUa2xUFTKR3XmTVUxOMBFJusU5HE/oSCvoPzN1JfuP0SI90BmfVkyqIKiK61nbLJVBaPtqeuLq84NimEtLHyEPKmxOx4b61SRxC79/xpSmV9qIWtINBAyyIjKG+B4SavY4XhrGKD5Kyi55cKQF+T0EQ46Nm7RJ5HD3LJLzvGl9ChBADZzf6Sn938y+Dx+6MIMr3nBwC1Qa2QnB+3IDtRSA4m2sR31KaV3sSYhoNoWiaFCyw0OaIM2XXIHibizvylf/GmC/7t+oBxySI01X7fAA6680"
 }

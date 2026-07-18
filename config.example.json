@@ -53,7 +53,7 @@
     "tunnelHealthSeconds": 30
   },
   "update": {
-    "manifest": "https://raw.githubusercontent.com/Beautiful0407/hanako--MCP-/main/update-manifest.json",
+    "manifest": "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json",
     "channel": "stable"
   }
 }

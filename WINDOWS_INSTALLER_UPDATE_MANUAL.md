@@ -1,6 +1,6 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.4.0`
+版本：`1.4.1`
 
 日期：`2026-07-18`
 
@@ -32,8 +32,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.4.0.exe
-release\HanakoLocalBridge-1.4.0-win-x64.zip
+release\HanakoLocalBridge-Setup-1.4.1.exe
+release\HanakoLocalBridge-1.4.1-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -88,7 +88,7 @@ logs\
 
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.4.0.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.4.1.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。

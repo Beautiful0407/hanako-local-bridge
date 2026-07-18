@@ -1,12 +1,12 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
-## v1.4.0 安全入口、WSS 与签名更新
+## v1.4.1 安全入口、WSS 与签名更新
 
 `server.cjs` 的 `/mcp` 只接受 loopback Host、拒绝浏览器 Origin，并要求 `Authorization: Bearer <data\approval-token.txt>`。MCP 和审批接口请求体上限为 1 MiB。
 
 官方云端地址为 `wss://154-201-69-202.sslip.io/local-bridge/connect`。Nginx 使用公开证书代理到 `127.0.0.1:14500`，Certbot 定时任务负责续期。
 
-远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。
+远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。公开更新清单和 ZIP 由 `https://154-201-69-202.sslip.io/local-bridge/releases/` 提供，源码仓库保持私有也不会影响客户端更新。
 
 配置保存只替换第一个读写根目录，并保留其他根目录。WinUI 管理器窗口尺寸限制在当前 Windows 工作区以内。
 

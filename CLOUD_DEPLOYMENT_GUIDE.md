@@ -7,7 +7,7 @@ backups.
 ## Components
 
 ```text
-Windows Bridge: 1.4.0
+Windows Bridge: 1.4.1
 Cloud Hana:     0.401.11 or compatible
 Device Router:  0.8.1
 ```
@@ -60,7 +60,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
 Expected state:
 
 ```text
-Bridge version: 1.4.0
+Bridge version: 1.4.1
 Cloud status: active
 MCP task: Running
 Legacy Tunnel task: Ready
@@ -105,9 +105,19 @@ GET  /internal/local-bridge/devices/:deviceId/health
 
 ## Reverse Proxy
 
-The reverse proxy must preserve WebSocket upgrades:
+The reverse proxy serves signed update artifacts directly and preserves WebSocket upgrades for the Hana application:
 
 ```nginx
+location = /local-bridge/releases { return 308 /local-bridge/releases/; }
+
+location ^~ /local-bridge/releases/ {
+    alias /var/www/hanako-local-bridge-releases/;
+    autoindex off;
+    default_type application/octet-stream;
+    add_header Cache-Control "no-cache" always;
+    limit_except GET HEAD { deny all; }
+}
+
 location / {
     proxy_pass http://127.0.0.1:14500;
     proxy_http_version 1.1;
@@ -128,7 +138,8 @@ location / {
 Verify all layers:
 
 ```text
-Windows /health reports version 1.4.0 and cloud.status=active
+Public update manifest and ZIP return HTTP 200 without GitHub authentication
+Windows /health reports version 1.4.1 and cloud.status=active
 Cloud /api/local-bridge/devices reports the device online
 Router /health reports version 0.8.1 and the bridge online
 local_fs.read_text works through the router

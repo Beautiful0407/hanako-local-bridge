@@ -62,7 +62,7 @@ async function run() {
     assert.equal(runtime.config.cloud.url, "wss://154-201-69-202.sslip.io/local-bridge/connect");
     assert.equal(
       runtime.config.update.manifest,
-      "https://raw.githubusercontent.com/Beautiful0407/hanako--MCP-/main/update-manifest.json",
+      "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json",
     );
     assert.equal(runtime.config.tunnel.enabled, false);
 

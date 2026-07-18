@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## v1.4.0 安全连接与图形化管理器
+## v1.4.1 安全连接与图形化管理器
 
-安装或覆盖升级 `HanakoLocalBridge-Setup-1.4.0.exe` 后，从开始菜单打开：
+安装或覆盖升级 `HanakoLocalBridge-Setup-1.4.1.exe` 后，从开始菜单打开：
 
 ```text
 Hanako Local Bridge
@@ -164,7 +164,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
 
 ## 当前运行方式：完全信任
 
-当前部署版本为 `1.4.0`，后台服务启用：
+当前部署版本为 `1.4.1`，后台服务启用：
 
 ```text
 LOCAL_AGENT_TRUST_MODE=full
@@ -200,7 +200,7 @@ local_fs.access_status: disabled
 ## 1. 当前版本
 
 ```text
-Bridge version: 1.4.0
+Bridge version: 1.4.1
 Windows MCP:    http://127.0.0.1:8787/mcp
 Approval UI:   http://127.0.0.1:8788/
 Cloud WebSocket: wss://154-201-69-202.sslip.io/local-bridge/connect

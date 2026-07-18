@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1 - 2026-07-18
+
+- Moved the public signed update manifest and ZIP package endpoint to the production HTTPS server so automatic updates work while the GitHub source repository remains private.
+- Added the Nginx static-release location and deployment/verification procedure for `/local-bridge/releases/`.
+
 ## 1.4.0 - 2026-07-18
 
 - Added Bearer-token authentication to the loopback MCP endpoint, rejected browser Origin requests, validated loopback Host headers, and limited MCP and approval request bodies to 1 MiB.
@@ -8,7 +13,7 @@
 - Preserved secondary configured filesystem roots when saving settings.
 - Made the WinUI manager fit the current Windows work area and enabled overview scrolling on compact displays.
 - Added RSA-SHA256 signatures for remote update manifests, enforced HTTPS, SHA256, and package-size verification, and embedded only the public signing key.
-- Switched the official update source to the GitHub-managed stable manifest.
+- Added an initial GitHub-managed stable manifest; superseded by the public HTTPS release endpoint in 1.4.1 because private GitHub repositories return 404 to unauthenticated clients.
 - Added configuration, update-signature, MCP authentication, Origin, body-limit, and routed-token regression coverage.
 
 ## 1.3.1 - 2026-07-18
