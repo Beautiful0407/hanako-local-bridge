@@ -21,6 +21,8 @@ public sealed partial class MainWindow : Window
     private bool _hiddenToTray;
     private bool _busy;
     private bool _loaded;
+    private bool _settingsLoaded;
+    private UpdateStatus? _updateStatus;
 
     public ObservableCollection<DiagnosticItemViewModel> Diagnostics { get; } = [];
     public ObservableCollection<CloudDeviceViewModel> CloudDevices { get; } = [];
@@ -170,9 +172,15 @@ public sealed partial class MainWindow : Window
         DiagnosticsPage.Visibility = tag == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         DevicesPage.Visibility = tag == "devices" ? Visibility.Visible : Visibility.Collapsed;
         LogsPage.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
         if (tag == "logs" && LogFiles.Count == 0)
         {
             _ = RefreshLogsAsync();
+        }
+        if (tag == "settings" && !_settingsLoaded)
+        {
+            _settingsLoaded = true;
+            _ = CheckForUpdateAsync(showErrors: false);
         }
     }
 
@@ -305,6 +313,8 @@ public sealed partial class MainWindow : Window
         StopButton.IsEnabled = !busy;
         RestartButton.IsEnabled = !busy;
         RepairButton.IsEnabled = !busy;
+        CheckUpdateButton.IsEnabled = !busy;
+        InstallUpdateButton.IsEnabled = !busy && _updateStatus?.UpdateAvailable == true;
         if (!string.IsNullOrWhiteSpace(message)) FooterStatusText.Text = message;
     }
 
@@ -374,6 +384,86 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
+            SetBusy(false);
+        }
+    }
+
+    private async Task CheckForUpdateAsync(bool showErrors = true)
+    {
+        if (_busy) return;
+        SetBusy(true, "正在检查在线更新...");
+        try
+        {
+            _updateStatus = await _service.CheckForUpdateAsync();
+            UpdateCurrentVersionText.Text = _updateStatus.CurrentVersion;
+            UpdateLatestVersionText.Text = _updateStatus.LatestVersion;
+            UpdateSignatureText.Text = _updateStatus.SignatureVerified
+                ? "已验证"
+                : "未签名（仅本地清单）";
+            UpdateNotesText.Text = string.IsNullOrWhiteSpace(_updateStatus.Notes)
+                ? ""
+                : _updateStatus.Notes;
+            UpdateStatusText.Text = _updateStatus.UpdateAvailable
+                ? $"发现新版本 {_updateStatus.LatestVersion}"
+                : "已是最新版本";
+
+            if (showErrors)
+            {
+                ShowInfo(
+                    "在线更新",
+                    _updateStatus.UpdateAvailable
+                        ? $"发现 Hanako Local Bridge {_updateStatus.LatestVersion}，可以立即安装。"
+                        : "当前已经是最新版本。",
+                    _updateStatus.UpdateAvailable
+                        ? InfoBarSeverity.Informational
+                        : InfoBarSeverity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = "检查失败";
+            UpdateSignatureText.Text = "-";
+            InstallUpdateButton.IsEnabled = false;
+            if (showErrors)
+            {
+                ShowInfo("在线更新检查失败", ex.Message, InfoBarSeverity.Error);
+            }
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private async void CheckUpdateButton_Click(object sender, RoutedEventArgs e) =>
+        await CheckForUpdateAsync();
+
+    private async void InstallUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updateStatus?.UpdateAvailable != true) return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "安装在线更新",
+            Content = $"将安装版本 {_updateStatus.LatestVersion}。更新期间管理器会自动退出，完成后重新打开。",
+            PrimaryButtonText = "立即更新",
+            CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = RootGrid.XamlRoot
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        SetBusy(true, "正在启动在线更新...");
+        try
+        {
+            await _service.StartUpdateAsync(_updateStatus.Manifest);
+            ShowInfo("在线更新", "更新程序已启动，管理器将在更新完成后自动重新打开。", InfoBarSeverity.Informational);
+            await Task.Delay(500);
+            ExitFromTray();
+        }
+        catch (Exception ex)
+        {
+            ShowInfo("启动在线更新失败", ex.Message, InfoBarSeverity.Error);
             SetBusy(false);
         }
     }

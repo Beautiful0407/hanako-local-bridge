@@ -112,6 +112,18 @@ public sealed class LogTailResult
     public string Content { get; set; } = "";
 }
 
+public sealed class UpdateStatus
+{
+    public string CurrentVersion { get; set; } = "unknown";
+    public string LatestVersion { get; set; } = "unknown";
+    public bool UpdateAvailable { get; set; }
+    public string Manifest { get; set; } = "";
+    public string PackageUrl { get; set; } = "";
+    public string PublishedAt { get; set; } = "";
+    public string Notes { get; set; } = "";
+    public bool SignatureVerified { get; set; }
+}
+
 public sealed class LogFileItem
 {
     public string Name { get; set; } = "";

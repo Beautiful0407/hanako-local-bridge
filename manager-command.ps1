@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("snapshot", "action", "cloud-query", "logs", "log-tail")]
+  [ValidateSet("snapshot", "action", "cloud-query", "logs", "log-tail", "update-check")]
   [string]$Operation = "snapshot",
   [string]$InstallRoot = $PSScriptRoot,
   [string]$ConfigPath = ""
@@ -49,6 +49,12 @@ try {
         [pscustomobject]@{
           content = Get-HanakoBridgeLogTail -Path ([string]$env:HANA_MANAGER_LOG_PATH)
         }
+      }
+      "update-check" {
+        Get-HanakoBridgeUpdateStatus `
+          -InstallRoot $InstallRoot `
+          -ConfigPath $ConfigPath `
+          -Manifest ([string]$env:HANA_MANAGER_UPDATE_MANIFEST)
       }
     }
   } 3>$null 4>$null 5>$null 6>$null

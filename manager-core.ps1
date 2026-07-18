@@ -1,4 +1,56 @@
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
+. (Join-Path $PSScriptRoot "update-signature.ps1")
+
+function Get-HanakoBridgeUpdateStatus {
+  param(
+    [string]$InstallRoot = $PSScriptRoot,
+    [string]$ConfigPath = "",
+    [string]$Manifest = ""
+  )
+
+  $root = Get-BridgeInstallRoot -InstallRoot $InstallRoot
+  $runtime = Get-BridgeRuntime -InstallRoot $root -ConfigPath $ConfigPath
+  if ([string]::IsNullOrWhiteSpace($Manifest)) {
+    $Manifest = [string]$runtime.config.update.manifest
+  }
+  if ([string]::IsNullOrWhiteSpace($Manifest)) {
+    throw "No update manifest is configured."
+  }
+  if ($Manifest -match "^http://") {
+    throw "Remote update manifests must use HTTPS."
+  }
+
+  $manifestIsRemote = $Manifest -match "^https://"
+  if ($manifestIsRemote) {
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Manifest -TimeoutSec 30
+    $manifestData = ([string]$response.Content) | ConvertFrom-Json
+  } else {
+    $manifestPath = [System.IO.Path]::GetFullPath($Manifest)
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+      throw "Update manifest does not exist: $manifestPath"
+    }
+    $manifestData = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+  }
+
+  $signatureVerified = Assert-HanakoUpdateManifestSignature `
+    -ManifestData $manifestData `
+    -PublicKeyPath (Join-Path $root "update-public-key.xml") `
+    -Required:$manifestIsRemote
+  $currentPackage = Get-Content -LiteralPath (Join-Path $root "package.json") -Raw | ConvertFrom-Json
+  $currentVersion = [version][string]$currentPackage.version
+  $latestVersion = [version][string]$manifestData.version
+
+  [pscustomobject]@{
+    currentVersion = $currentVersion.ToString()
+    latestVersion = $latestVersion.ToString()
+    updateAvailable = $latestVersion -gt $currentVersion
+    manifest = $Manifest
+    packageUrl = [string]$manifestData.packageUrl
+    publishedAt = [string]$manifestData.publishedAt
+    notes = [string]$manifestData.notes
+    signatureVerified = [bool]$signatureVerified
+  }
+}
 
 function ConvertTo-HanakoCloudWebBase {
   param([string]$CloudUrl)

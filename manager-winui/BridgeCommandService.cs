@@ -21,6 +21,64 @@ public sealed class BridgeCommandService
 
     public string InstallRoot => _installRoot;
 
+    public Task<UpdateStatus> CheckForUpdateAsync(
+        string? manifest = null,
+        CancellationToken cancellationToken = default)
+    {
+        var environment = new Dictionary<string, string?>
+        {
+            ["HANA_MANAGER_UPDATE_MANIFEST"] = manifest
+        };
+        return RunAsync<UpdateStatus>(
+            "update-check",
+            environment,
+            TimeSpan.FromSeconds(45),
+            cancellationToken);
+    }
+
+    public Task StartUpdateAsync(
+        string? manifest = null,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var script = Path.Combine(_installRoot, "update-and-restart.ps1");
+        if (!File.Exists(script))
+        {
+            throw new FileNotFoundException("在线更新启动器不存在。", script);
+        }
+
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var powershell = Path.Combine(windows, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = powershell,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = _installRoot
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-ExecutionPolicy");
+        startInfo.ArgumentList.Add("Bypass");
+        startInfo.ArgumentList.Add("-WindowStyle");
+        startInfo.ArgumentList.Add("Hidden");
+        startInfo.ArgumentList.Add("-File");
+        startInfo.ArgumentList.Add(script);
+        startInfo.ArgumentList.Add("-InstallRoot");
+        startInfo.ArgumentList.Add(_installRoot);
+        if (!string.IsNullOrWhiteSpace(manifest))
+        {
+            startInfo.ArgumentList.Add("-Manifest");
+            startInfo.ArgumentList.Add(manifest);
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("无法启动在线更新。");
+        process.Dispose();
+        return Task.CompletedTask;
+    }
+
     public async Task<T> RunAsync<T>(
         string operation,
         IReadOnlyDictionary<string, string?>? environment = null,

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.4 - 2026-07-18
+
+- Fixed WinUI system tray notification decoding so double-click and right-click work with `NOTIFYICON_VERSION_4`.
+- Added tray menu actions to reopen the manager or exit the manager process.
+- Added signed online update checking and one-click installation in the manager settings.
+
 ## 1.4.3 - 2026-07-18
 
 - Added a native Windows system-tray icon to the WinUI manager.

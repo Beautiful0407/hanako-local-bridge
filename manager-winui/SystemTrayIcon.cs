@@ -16,6 +16,9 @@ internal sealed class SystemTrayIcon : IDisposable
     private const uint WmLButtonUp = 0x0202;
     private const uint WmLButtonDblClk = 0x0203;
     private const uint WmRButtonUp = 0x0205;
+    private const uint WmContextMenu = 0x007B;
+    private const uint NinSelect = 0x0400;
+    private const uint NinKeySelect = 0x0401;
     private const uint WmSize = 0x0005;
     private const uint SizeMinimized = 1;
     private const uint WmNull = 0x0000;
@@ -111,14 +114,14 @@ internal sealed class SystemTrayIcon : IDisposable
 
         if (message == _callbackMessage)
         {
-            var trayMessage = unchecked((uint)lParam.ToInt64());
-            if (trayMessage is WmLButtonUp or WmLButtonDblClk)
+            var trayMessage = TrayMessageDecoder.GetNotificationCode(lParam);
+            if (trayMessage is WmLButtonUp or WmLButtonDblClk or NinSelect or NinKeySelect)
             {
                 _restoreWindow();
                 return IntPtr.Zero;
             }
 
-            if (trayMessage == WmRButtonUp)
+            if (trayMessage is WmRButtonUp or WmContextMenu)
             {
                 ShowContextMenu();
                 return IntPtr.Zero;

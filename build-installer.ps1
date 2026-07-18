@@ -82,6 +82,7 @@ $rootFiles = @(
   "status.ps1",
   "stop.ps1",
   "uninstall-background-service.ps1",
+  "update-and-restart.ps1",
   "update-manifest.example.json",
   "update-public-key.xml",
   "update-signature.ps1",

@@ -20,6 +20,25 @@ function Invoke-HanakoBridgeManagerAction {
     action = $Action
   }
 }
+
+function Get-HanakoBridgeUpdateStatus {
+  param(
+    [string]$InstallRoot,
+    [string]$ConfigPath,
+    [string]$Manifest
+  )
+
+  [pscustomobject]@{
+    currentVersion = "1.4.3"
+    latestVersion = "1.4.4"
+    updateAvailable = $true
+    manifest = "https://example.test/update-manifest.json"
+    packageUrl = "https://example.test/HanakoLocalBridge-1.4.4-win-x64.zip"
+    publishedAt = "2026-07-18T00:00:00Z"
+    notes = "manager command update check"
+    signatureVerified = $true
+  }
+}
 '@
   [System.IO.File]::WriteAllText(
     (Join-Path $testRoot "manager-core.ps1"),
@@ -48,6 +67,28 @@ function Invoke-HanakoBridgeManagerAction {
   $result = ([string]$raw[0]) | ConvertFrom-Json
   if ($result.ok -ne $true -or $result.action -ne "repair") {
     throw "manager-command JSON result was incorrect."
+  }
+
+  $updateRaw = @(
+    & powershell.exe `
+      -NoLogo `
+      -NoProfile `
+      -NonInteractive `
+      -ExecutionPolicy Bypass `
+      -File $commandScript `
+      -Operation update-check `
+      -InstallRoot $testRoot
+  )
+  if ($LASTEXITCODE -ne 0) {
+    throw "manager-command update-check exited with code $LASTEXITCODE."
+  }
+  $updateResult = ([string]$updateRaw[0]) | ConvertFrom-Json
+  if (
+    $updateResult.updateAvailable -ne $true -or
+    $updateResult.latestVersion -ne "1.4.4" -or
+    $updateResult.signatureVerified -ne $true
+  ) {
+    throw "manager-command update-check JSON result was incorrect."
   }
   Write-Host "manager command tests passed"
 } finally {
