@@ -2,7 +2,7 @@
 
 稳定版本：`1.4.9`
 
-Rust 预发布版本：`2.0.0-alpha.6`
+Rust 预发布版本：`2.0.0-alpha.7`
 
 日期：`2026-07-19`
 
@@ -10,21 +10,21 @@ Rust 预发布版本：`2.0.0-alpha.6`
 
 ```text
 稳定渠道：1.4.9，继续用于现有 Windows 电脑
-Alpha 渠道：2.0.0-alpha.6，包含纯 Rust Bridge、Manager、Updater 和 Installer
+Alpha 渠道：2.0.0-alpha.7，包含纯 Rust Bridge、Manager、Updater 和 Installer
 云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
 ```
 
 不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。首次安装或覆盖修复必须使用内嵌安装器或签名更新清单。
 
-Alpha 6 发布文件：
+Alpha 7 发布文件：
 
 ```text
-build\rust-release-alpha6\HanakoLocalBridge-Setup-2.0.0-alpha.6.exe
-build\rust-release-alpha6\HanakoLocalBridge-2.0.0-alpha.6-win-x64.zip
-build\rust-release-alpha6\update-manifest.json
+build\rust-release-alpha7\HanakoLocalBridge-Setup-2.0.0-alpha.7.exe
+build\rust-release-alpha7\HanakoLocalBridge-2.0.0-alpha.7-win-x64.zip
+build\rust-release-alpha7\update-manifest.json
 ```
 
-Alpha 6 已验证：
+Alpha 7 已验证：
 
 ```text
 首次安装
@@ -39,12 +39,14 @@ Alpha 6 已验证：
 重复点击快捷方式只保留一个管理器窗口
 卸载注册和后台卸载
 WebView2 退出延迟时重试清理安装目录
-Alpha 5 负载升级到 Alpha 6
+Alpha 6 负载升级到 Alpha 7
+预发布构建自动选择 `/local-bridge/releases/alpha/update-manifest.json`
+稳定清单和自定义清单保持隔离
 配置、data、logs 和未知用户文件保留
 签名、SHA256、大小校验和失败回滚
 ```
 
-另一台已安装 Alpha 5 或仍残留旧 Node 服务的电脑不需要先卸载。关闭正在使用的管理器窗口后，直接双击 `HanakoLocalBridge-Setup-2.0.0-alpha.6.exe` 覆盖安装即可。安装器会停止旧计划任务及其脱离式 watchdog/Node 进程、等待本地端口释放、安装 Rust 服务并保留现有配置与数据。
+另一台已安装 Alpha 5、Alpha 6 或仍残留旧 Node 服务的电脑不需要先卸载。关闭正在使用的管理器窗口后，直接双击 `HanakoLocalBridge-Setup-2.0.0-alpha.7.exe` 覆盖安装即可。安装器会停止旧计划任务及其脱离式 watchdog/Node 进程、等待本地端口释放、安装 Rust 服务并保留现有配置与数据。Alpha 5/6 必须最后手动覆盖这一次；安装 Alpha 7 后，后续 Alpha 版本可从管理器在线更新。
 
 ## 1. 目标
 

@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
 };
 use hanako_bridge_core::{
-    config::{RootConfig, RootMode},
+    config::{RootConfig, RootMode, effective_update_channel, effective_update_manifest},
     device::clean_device_id,
     store::write_json_atomic,
 };
@@ -116,6 +116,10 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
         }),
     ];
     let update_state = read_json_value(&state.data_dir.join("update-state.json")).await;
+    let update_manifest =
+        effective_update_manifest(&state.runtime.config.update, env!("CARGO_PKG_VERSION"));
+    let update_channel =
+        effective_update_channel(&state.runtime.config.update, env!("CARGO_PKG_VERSION"));
     (
         StatusCode::OK,
         Json(json!({
@@ -136,7 +140,8 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             "cloud": cloud,
             "service": service,
             "update": {
-                "manifest": state.runtime.config.update.manifest,
+                "manifest": update_manifest,
+                "channel": update_channel,
                 "state": update_state
             },
             "checks": checks,
@@ -148,7 +153,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
                 "approvalPort": state.runtime.config.filesystem.approval_port,
                 "cloudEnabled": state.runtime.config.cloud.enabled,
                 "cloudUrl": state.runtime.config.cloud.url,
-                "updateManifest": state.runtime.config.update.manifest,
+                "updateManifest": update_manifest,
                 "roots": state.runtime.config.filesystem.roots
             }
         })),
@@ -218,7 +223,9 @@ async fn check_update(State(state): State<Arc<AppState>>, headers: HeaderMap) ->
     }
     let executable = maintenance_executable(&state.runtime.install_dir);
     let install_root = state.runtime.install_dir.clone();
-    let manifest = state.runtime.config.update.manifest.clone();
+    let manifest =
+        effective_update_manifest(&state.runtime.config.update, env!("CARGO_PKG_VERSION"))
+            .to_string();
     match tokio::task::spawn_blocking(move || {
         maintenance_json(
             &executable,
@@ -269,7 +276,9 @@ async fn install_update(
     }
     let executable = maintenance_executable(&state.runtime.install_dir);
     let install_root = state.runtime.install_dir.clone();
-    let manifest = state.runtime.config.update.manifest.clone();
+    let manifest =
+        effective_update_manifest(&state.runtime.config.update, env!("CARGO_PKG_VERSION"))
+            .to_string();
     let expected_version = input.expected_version;
     match tokio::task::spawn_blocking(move || {
         maintenance_json(
@@ -524,6 +533,9 @@ mod tests {
         assert!(MANAGER_HTML.contains("Windows 拒绝了服务操作"));
         assert!(MANAGER_HTML.contains("waitForServiceRecovery"));
         assert!(MANAGER_HTML.contains("recoveryInProgress"));
+        assert!(MANAGER_HTML.contains("apiWithConnectionRetry"));
+        assert!(MANAGER_HTML.contains("checkedUpdate = await apiWithConnectionRetry"));
+        assert!(MANAGER_HTML.contains("message.textContent = friendlyError(error)"));
         assert!(!MANAGER_HTML.contains("text(\"metric-cloud\", data.cloud.status"));
         assert!(!MANAGER_HTML.contains("${esc(item.code)}"));
         assert!(!MANAGER_HTML.contains("${esc(item.status)}"));

@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -13,6 +14,8 @@ pub const OFFICIAL_CLOUD_URL: &str = "wss://154-201-69-202.sslip.io/local-bridge
 pub const LEGACY_CLOUD_URL: &str = "ws://154.201.69.202/local-bridge/connect";
 pub const OFFICIAL_UPDATE_MANIFEST: &str =
     "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json";
+pub const OFFICIAL_ALPHA_UPDATE_MANIFEST: &str =
+    "https://154-201-69-202.sslip.io/local-bridge/releases/alpha/update-manifest.json";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +107,38 @@ pub struct ServiceConfig {
 pub struct UpdateConfig {
     pub manifest: String,
     pub channel: String,
+}
+
+fn uses_official_update_feed(update: &UpdateConfig) -> bool {
+    let manifest = update.manifest.trim();
+    manifest.is_empty()
+        || manifest == OFFICIAL_UPDATE_MANIFEST
+        || manifest == OFFICIAL_ALPHA_UPDATE_MANIFEST
+}
+
+pub fn effective_update_channel<'a>(update: &'a UpdateConfig, current_version: &str) -> &'a str {
+    let configured = update.channel.trim();
+    if uses_official_update_feed(update)
+        && Version::parse(current_version).is_ok_and(|version| !version.pre.is_empty())
+        && (configured.is_empty() || configured.eq_ignore_ascii_case("stable"))
+    {
+        "alpha"
+    } else if configured.is_empty() {
+        "stable"
+    } else {
+        configured
+    }
+}
+
+pub fn effective_update_manifest<'a>(update: &'a UpdateConfig, current_version: &str) -> &'a str {
+    if !uses_official_update_feed(update) {
+        return update.manifest.trim();
+    }
+    if effective_update_channel(update, current_version).eq_ignore_ascii_case("alpha") {
+        OFFICIAL_ALPHA_UPDATE_MANIFEST
+    } else {
+        OFFICIAL_UPDATE_MANIFEST
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -474,5 +509,45 @@ mod tests {
             expand_environment("%KNOWN%/%MISSING%", Path::new("C:/app"), &variables),
             "value/%MISSING%"
         );
+    }
+
+    #[test]
+    fn official_update_manifest_tracks_the_effective_release_channel() {
+        let mut update = UpdateConfig {
+            manifest: OFFICIAL_UPDATE_MANIFEST.to_string(),
+            channel: "stable".to_string(),
+        };
+
+        assert_eq!(
+            effective_update_manifest(&update, "2.0.0"),
+            OFFICIAL_UPDATE_MANIFEST
+        );
+        assert_eq!(effective_update_channel(&update, "2.0.0"), "stable");
+        assert_eq!(
+            effective_update_manifest(&update, "2.0.0-alpha.7"),
+            OFFICIAL_ALPHA_UPDATE_MANIFEST
+        );
+        assert_eq!(effective_update_channel(&update, "2.0.0-alpha.7"), "alpha");
+
+        update.channel = "alpha".to_string();
+        assert_eq!(
+            effective_update_manifest(&update, "1.4.9"),
+            OFFICIAL_ALPHA_UPDATE_MANIFEST
+        );
+        assert_eq!(effective_update_channel(&update, "1.4.9"), "alpha");
+    }
+
+    #[test]
+    fn custom_update_manifest_is_never_rewritten() {
+        let update = UpdateConfig {
+            manifest: "https://updates.example.test/custom.json".to_string(),
+            channel: "stable".to_string(),
+        };
+
+        assert_eq!(
+            effective_update_manifest(&update, "2.0.0-alpha.7"),
+            "https://updates.example.test/custom.json"
+        );
+        assert_eq!(effective_update_channel(&update, "2.0.0-alpha.7"), "stable");
     }
 }

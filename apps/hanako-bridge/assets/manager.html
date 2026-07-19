@@ -294,6 +294,15 @@ function isConnectionError(error) {
   return /Failed to fetch|NetworkError|本地服务暂时无法连接/i.test(String(error?.message || error || ""));
 }
 function delay(milliseconds) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
+async function apiWithConnectionRetry(path, options = {}) {
+  try {
+    return await api(path, options);
+  } catch (error) {
+    if (!isConnectionError(error)) throw error;
+    await delay(650);
+    return api(path, options);
+  }
+}
 function setMessage(id, value, state = "") {
   const element = document.getElementById(id);
   element.textContent = value;
@@ -457,14 +466,14 @@ document.getElementById("update-check").onclick = async () => {
   try {
     message.textContent = "正在检查签名更新清单...";
     install.disabled = true;
-    checkedUpdate = await api("/api/manager/update/check");
+    checkedUpdate = await apiWithConnectionRetry("/api/manager/update/check");
     text("update-latest", checkedUpdate.targetVersion);
     text("update-notes", checkedUpdate.notes || "无");
     install.disabled = !checkedUpdate.available;
     message.textContent = checkedUpdate.available ? "发现新版本，可以安装。" : "当前已经是最新版本。";
   } catch (error) {
     checkedUpdate = null;
-    message.textContent = error.message;
+    message.textContent = friendlyError(error);
   }
 };
 document.getElementById("update-install").onclick = async () => {
@@ -481,7 +490,7 @@ document.getElementById("update-install").onclick = async () => {
     message.textContent = "更新进程已接管。管理器将自动关闭，完成后重新打开。";
   } catch (error) {
     install.disabled = false;
-    message.textContent = error.message;
+    message.textContent = friendlyError(error);
   }
 };
 document.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {

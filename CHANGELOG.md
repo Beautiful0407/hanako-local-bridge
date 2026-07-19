@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.7 - 2026-07-19
+
+- Added a separate signed Alpha update feed under `/local-bridge/releases/alpha/` while leaving the stable `1.4.9` feed unchanged.
+- Automatically selects the Alpha feed for prerelease Rust builds that still carry the official stable manifest URL.
+- Preserves custom update manifest URLs and supports explicitly selecting the Alpha channel.
+- Shows the effective manifest in manager status and settings so the displayed source matches the source actually used.
+- Retries manager update checks once after a transient local connection failure and translates raw `Failed to fetch` errors into a Chinese recovery message.
+- Added regression coverage for stable, prerelease, explicit channel, custom manifest, and manager update error behavior.
+
 ## 2.0.0-alpha.6 - 2026-07-19
 
 - Replaced the fixed 2.5-second manager refresh after repair or restart with a 30-second recovery loop that tolerates the expected local disconnect.

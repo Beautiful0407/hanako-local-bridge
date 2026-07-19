@@ -22,7 +22,7 @@ tests/rust-update-smoke.ps1
 
 `hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面；`hanako-maintenance` 负责签名下载、事务更新和回滚；`hanako-bootstrap` 负责内嵌安装、快捷方式和卸载；`hanako-device-router` 负责 Linux 多设备路由和离线队列。
 
-当前 Windows Rust 版本为 `2.0.0-alpha.6`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 6 在 Alpha 5 的中文管理页和独立服务动作任务基础上，增加了修复/重启后的自动恢复轮询，短暂断线不再残留为红色错误，云端连接中和验证中状态按警告显示；Windows 稳定渠道仍为 `1.4.9`。保留 Node/PowerShell/WinUI 代码用于稳定版维护和回滚，不要提前删除。
+当前 Windows Rust 版本为 `2.0.0-alpha.7`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 7 为预发布版本选择独立的 Alpha HTTPS 更新清单，稳定版继续使用稳定清单，自定义清单不被改写；更新检查在本地服务短暂断线时重试一次并显示中文错误。Alpha 6 的修复/重启恢复轮询和云端过渡状态展示继续保留；Windows 稳定渠道仍为 `1.4.9`。保留 Node/PowerShell/WinUI 代码用于稳定版维护和回滚，不要提前删除。
 
 完整质量门：
 
@@ -49,7 +49,7 @@ Rust Alpha 的完整构建、测试、数据兼容和迁移边界见 `RUST_MIGRA
 
 官方云端地址为 `wss://154-201-69-202.sslip.io/local-bridge/connect`。Nginx 使用公开证书代理到 `127.0.0.1:14500`，Certbot 定时任务负责续期。
 
-远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。公开更新清单和 ZIP 由 `https://154-201-69-202.sslip.io/local-bridge/releases/` 提供，源码仓库保持私有也不会影响客户端更新。
+远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。稳定版更新清单和 ZIP 由 `https://154-201-69-202.sslip.io/local-bridge/releases/` 提供，Alpha 清单和 ZIP 位于其 `alpha/` 子目录；源码仓库保持私有也不会影响客户端更新。
 
 配置保存只替换第一个读写根目录，并保留其他根目录。WinUI 管理器窗口尺寸限制在当前 Windows 工作区以内。
 

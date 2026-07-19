@@ -7,11 +7,11 @@ $runId = [Guid]::NewGuid().ToString("N")
 $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha6\HanakoLocalBridge-Setup-2.0.0-alpha.6.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha6\HanakoLocalBridge-2.0.0-alpha.6-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha6Smoke"
-$taskName = "Hanako Rust Alpha6 Smoke MCP"
-$actionTaskName = "Hanako Rust Alpha6 Smoke Manager Action"
+$installer = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-Setup-2.0.0-alpha.7.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-2.0.0-alpha.7-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke"
+$taskName = "Hanako Rust Alpha7 Smoke MCP"
+$actionTaskName = "Hanako Rust Alpha7 Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
 $legacyServer = Join-Path $testRoot "legacy-server.cjs"
 $legacyLauncher = Join-Path $testRoot "run-legacy-hidden.vbs"
@@ -62,10 +62,10 @@ function Test-BridgeHealth {
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.6" -and
+      $health.version -eq "2.0.0-alpha.7" -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.6"
+      $approvalHealth.version -eq "2.0.0-alpha.7"
     )
   } catch {
     return $false
@@ -240,8 +240,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 6 installer is missing."
-  Assert-Path $payload "Rust Alpha 6 payload is missing."
+  Assert-Path $installer "Rust Alpha 7 installer is missing."
+  Assert-Path $payload "Rust Alpha 7 payload is missing."
 
   New-Item -ItemType Directory -Force -Path $profileRoot, $appDataRoot | Out-Null
 
@@ -281,7 +281,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha6 Smoke"
+      taskPrefix = "Hanako Rust Alpha7 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -329,7 +329,7 @@ try {
   Assert-Path (Join-Path $profileRoot "Desktop\Hanako Local Bridge.lnk") "Desktop shortcut was not created."
   Set-Stage "first install assertions passed"
   Assert-Path (Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk") "Start menu shortcut was not created."
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha6Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -385,7 +385,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $testRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha6Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -408,7 +408,7 @@ try {
       Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha6Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData
