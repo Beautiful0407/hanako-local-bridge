@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.6 - 2026-07-19
+
+- Replaced the fixed 2.5-second manager refresh after repair or restart with a 30-second recovery loop that tolerates the expected local disconnect.
+- Clears transient connection errors after the local service returns and keeps service-action buttons disabled until recovery is complete.
+- Reports `connecting` and `authenticating` cloud states as warnings instead of final errors; an intentionally disabled cloud connection is healthy.
+- Adds a warning-level overall manager state and displays cloud state plus the last connection error in diagnostic details.
+- Handles settings-triggered restarts with the same recovery flow when the manager port is unchanged.
+- Added regression coverage for cloud transition classification and the manager recovery state machine.
+
 ## 2.0.0-alpha.5 - 2026-07-19
 
 - Localized cloud connection, trust mode, diagnostic item, diagnostic status, root permission, root source, and update status values in the Rust manager.

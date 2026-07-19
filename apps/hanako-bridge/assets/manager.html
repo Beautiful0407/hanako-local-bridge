@@ -69,6 +69,7 @@
     pre { margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 14px; background: #15181c; color: #e7eaf0; border-radius: 6px; font: 12px/1.55 Consolas, monospace; white-space: pre-wrap; }
     .message { min-height: 22px; margin-top: 10px; color: #1769aa; font-size: 13px; }
     .message.success { color: #176c3a; }
+    .message.warning { color: #8b570d; }
     .message.error { color: #a12622; }
     @media (prefers-color-scheme: dark) {
       :root, body { background: #17191c; color: #edf0f3; }
@@ -83,6 +84,7 @@
       .badge.warning { background: #55401d; color: #ffd48b; }
       .badge.error { background: #562828; color: #ffb2ae; }
       .message.success { color: #8ed4a8; }
+      .message.warning { color: #ffd48b; }
       .message.error { color: #ff9d98; }
     }
   </style>
@@ -203,6 +205,8 @@ const TOKEN = "__HANA_APPROVAL_TOKEN__";
 const headers = { "Content-Type": "application/json", "X-Approval-Token": TOKEN };
 let snapshot = null;
 let checkedUpdate = null;
+let recoveryInProgress = false;
+let recoveryGeneration = 0;
 const CLOUD_STATUS_TEXT = Object.freeze({
   active: "已连接",
   pending_claim: "等待绑定",
@@ -246,9 +250,10 @@ const UPDATE_STATUS_TEXT = Object.freeze({
   failed: "更新失败"
 });
 const ACTION_TEXT = Object.freeze({
-  repair: { pending: "正在启动检测与修复...", success: "修复任务已启动，正在重新检测服务状态。" },
-  restart: { pending: "正在重启服务...", success: "重启任务已启动，服务恢复后会自动刷新。" },
-  stop: { pending: "正在停止服务...", success: "停止任务已启动，当前窗口稍后会断开连接。" }
+  repair: { pending: "正在启动检测与修复...", success: "检测与修复完成，本地服务已恢复。" },
+  restart: { pending: "正在重启服务...", success: "服务重启完成，本地连接已恢复。" },
+  stop: { pending: "正在停止服务...", success: "服务已停止，重新打开管理器时会自动启动。" },
+  settings: { pending: "设置已保存，正在重启服务...", success: "设置已生效，本地服务已恢复。" }
 });
 
 async function api(path, options = {}) {
@@ -269,6 +274,12 @@ function checkStatusClass(value) { return ["pass", "warning", "error"].includes(
 function rootModeText(value) { return displayText(ROOT_MODE_TEXT, value, value || "未知"); }
 function rootSourceText(value) { return displayText(ROOT_SOURCE_TEXT, value, value || "配置"); }
 function updateStatusText(value) { return displayText(UPDATE_STATUS_TEXT, value, value || "尚无更新记录"); }
+function checkDetailText(item) {
+  if (item.code !== "cloud") return item.detail;
+  const parts = [cloudStatusText(item.state), item.detail];
+  if (item.lastError) parts.push(item.lastError);
+  return parts.filter(Boolean).join(" · ");
+}
 function friendlyError(error) {
   const message = String(error?.message || error || "操作失败");
   if (/Access is denied|os error 5|拒绝访问/i.test(message)) {
@@ -279,18 +290,32 @@ function friendlyError(error) {
   }
   return message;
 }
+function isConnectionError(error) {
+  return /Failed to fetch|NetworkError|本地服务暂时无法连接/i.test(String(error?.message || error || ""));
+}
+function delay(milliseconds) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
 function setMessage(id, value, state = "") {
   const element = document.getElementById(id);
   element.textContent = value;
   element.className = `message ${state}`.trim();
 }
+function setHeaderStatus(value, state) {
+  text("header-status", value);
+  document.getElementById("header-dot").className = `dot ${state}`;
+}
+function cloudRecoveryComplete(status) {
+  return ["active", "pending_claim", "disabled"].includes(status);
+}
 
 function render(data) {
   snapshot = data;
-  const healthy = data.overall === "healthy";
+  const header = data.overall === "healthy"
+    ? { text: "运行正常", state: "pass" }
+    : data.overall === "warning"
+      ? { text: "正在恢复或需要关注", state: "warning" }
+      : { text: "需要处理", state: "error" };
   text("header-device", `${data.device.name} · ${data.device.id}`);
-  text("header-status", healthy ? "运行正常" : "需要处理");
-  document.getElementById("header-dot").className = `dot ${healthy ? "pass" : "error"}`;
+  setHeaderStatus(header.text, header.state);
   text("metric-mcp", data.service.healthOk ? "在线" : "离线");
   text("metric-cloud", cloudStatusText(data.cloud.status));
   text("metric-task", data.service.taskExists ? "已安装" : "缺失");
@@ -307,7 +332,7 @@ function render(data) {
   const updateState = data.update?.state;
   text("update-state", updateStatusText(updateState?.status));
   if (updateState?.message) text("update-message", updateState.message);
-  document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(checkNameText(item.code))}</td><td><span class="badge ${checkStatusClass(item.status)}">${esc(checkStatusText(item.status))}</span></td><td>${esc(item.detail)}</td></tr>`).join("");
+  document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(checkNameText(item.code))}</td><td><span class="badge ${checkStatusClass(item.status)}">${esc(checkStatusText(item.status))}</span></td><td>${esc(checkDetailText(item))}</td></tr>`).join("");
   document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(rootModeText(root.mode))}</td><td>${esc(rootSourceText(root.source))}</td></tr>`).join("");
   fillSettings(data.settings);
 }
@@ -336,8 +361,56 @@ function addRootRow(root = { name: "", path: "", mode: "read_write" }) {
 }
 
 async function refresh() {
+  if (recoveryInProgress) return false;
   try { render(await api("/api/manager/snapshot")); }
-  catch (error) { text("header-status", friendlyError(error)); document.getElementById("header-dot").className = "dot error"; }
+  catch (error) { setHeaderStatus(friendlyError(error), "error"); return false; }
+  return true;
+}
+
+async function waitForServiceRecovery(action, messageId = "diagnostic-message") {
+  const generation = ++recoveryGeneration;
+  recoveryInProgress = true;
+  const deadline = Date.now() + 30000;
+  let lastData = null;
+  await delay(1200);
+  try {
+    while (Date.now() < deadline && generation === recoveryGeneration) {
+      try {
+        const data = await api("/api/manager/snapshot");
+        lastData = data;
+        render(data);
+        if (data.service.healthOk && cloudRecoveryComplete(data.cloud.status)) {
+          const cloudStatus = data.cloud.status;
+          if (cloudStatus === "pending_claim") {
+            setMessage(messageId, "本地服务已恢复，云端正在等待绑定。", "warning");
+          } else {
+            setMessage(messageId, ACTION_TEXT[action]?.success || "本地服务已恢复。", "success");
+          }
+          return true;
+        }
+        if (data.service.healthOk) {
+          setHeaderStatus(`本地服务已恢复，云端${cloudStatusText(data.cloud.status)}`, "warning");
+          setMessage(messageId, "本地服务已恢复，正在等待云端连接恢复...", "warning");
+        } else {
+          setHeaderStatus("服务正在重新启动...", "warning");
+        }
+      } catch {
+        setHeaderStatus("服务正在重新启动...", "warning");
+      }
+      await delay(650);
+    }
+    if (lastData?.service?.healthOk) {
+      setMessage(
+        messageId,
+        `本地服务已恢复，云端当前为“${cloudStatusText(lastData.cloud?.status)}”，稍后会继续自动重连。`,
+        "warning"
+      );
+      return true;
+    }
+    throw new Error("等待本地服务恢复超时，请点击“立即检测”重试。");
+  } finally {
+    if (generation === recoveryGeneration) recoveryInProgress = false;
+  }
 }
 
 async function loadLogs() {
@@ -368,7 +441,9 @@ document.getElementById("refresh-button").onclick = async () => {
     render(await api("/api/manager/snapshot"));
     setMessage("diagnostic-message", "检测完成，结果已刷新。", "success");
   } catch (error) {
-    setMessage("diagnostic-message", friendlyError(error), "error");
+    const message = friendlyError(error);
+    setMessage("diagnostic-message", message, "error");
+    setHeaderStatus(message, "error");
   } finally {
     button.disabled = false;
   }
@@ -416,9 +491,18 @@ document.querySelectorAll("[data-action]").forEach(button => button.onclick = as
   actionButtons.forEach(item => item.disabled = true);
   try {
     setMessage("diagnostic-message", copy.pending);
-    await api("/api/manager/action", { method: "POST", body: JSON.stringify({ action }) });
-    setMessage("diagnostic-message", copy.success, "success");
-    if (action !== "stop") setTimeout(refresh, 2500);
+    setHeaderStatus(action === "repair" ? "正在检测与修复..." : "正在执行服务操作...", "warning");
+    try {
+      await api("/api/manager/action", { method: "POST", body: JSON.stringify({ action }) });
+    } catch (error) {
+      if (!isConnectionError(error)) throw error;
+    }
+    if (action === "stop") {
+      setMessage("diagnostic-message", copy.success, "success");
+      setHeaderStatus("服务已停止", "warning");
+    } else {
+      await waitForServiceRecovery(action);
+    }
   } catch (error) {
     setMessage("diagnostic-message", friendlyError(error), "error");
   } finally {
@@ -449,8 +533,14 @@ document.getElementById("settings-form").onsubmit = async event => {
         roots
       })
     });
-    message.textContent = "设置已保存，正在重启服务。";
-  } catch (error) { message.textContent = friendlyError(error); }
+    const approvalPortChanged = snapshot && Number(document.getElementById("setting-approval-port").value) !== snapshot.local.statusPort;
+    if (approvalPortChanged) {
+      setMessage("settings-message", "设置已保存。状态端口已经改变，请重新打开管理器。", "warning");
+    } else {
+      setMessage("settings-message", ACTION_TEXT.settings.pending);
+      await waitForServiceRecovery("settings", "settings-message");
+    }
+  } catch (error) { setMessage("settings-message", friendlyError(error), "error"); }
 };
 
 refresh();

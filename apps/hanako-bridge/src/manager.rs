@@ -91,6 +91,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             ),
             executable: state.runtime.install_dir.join("hanako-bridge.exe"),
         });
+    let cloud = state.cloud_identity().await;
     let checks = vec![
         json!({
             "code": "config",
@@ -107,16 +108,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             "status": if service.health_ok { "pass" } else { "error" },
             "detail": service.health_url
         }),
-        json!({
-            "code": "cloud",
-            "status": match state.cloud_identity().await["status"].as_str() {
-                Some("active") => "pass",
-                Some("pending_claim") => "warning",
-                Some("disabled") => "warning",
-                _ => "error"
-            },
-            "detail": state.runtime.config.cloud.url
-        }),
+        cloud_check(&cloud, &state.runtime.config.cloud.url),
         json!({
             "code": "maintenance",
             "status": if maintenance_executable(&state.runtime.install_dir).is_file() { "pass" } else { "error" },
@@ -128,7 +120,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
         StatusCode::OK,
         Json(json!({
             "capturedAt": chrono::Utc::now().to_rfc3339(),
-            "overall": if checks.iter().any(|check| check["status"] == "error") { "error" } else { "healthy" },
+            "overall": overall_status(&checks),
             "version": env!("CARGO_PKG_VERSION"),
             "installRoot": state.runtime.install_dir,
             "configPath": state.runtime.config_path,
@@ -141,7 +133,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
                 "pendingExecutions": state.execution.pending_count().await,
                 "roots": state.access.list_grants().await
             },
-            "cloud": state.cloud_identity().await,
+            "cloud": cloud,
             "service": service,
             "update": {
                 "manifest": state.runtime.config.update.manifest,
@@ -161,6 +153,32 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             }
         })),
     )
+}
+
+fn cloud_check(cloud: &Value, cloud_url: &str) -> Value {
+    let state = cloud["status"].as_str().unwrap_or("offline");
+    let status = match state {
+        "active" | "disabled" => "pass",
+        "connecting" | "authenticating" | "pending_claim" => "warning",
+        _ => "error",
+    };
+    json!({
+        "code": "cloud",
+        "status": status,
+        "state": state,
+        "detail": cloud_url,
+        "lastError": cloud["lastError"]
+    })
+}
+
+fn overall_status(checks: &[Value]) -> &'static str {
+    if checks.iter().any(|check| check["status"] == "error") {
+        "error"
+    } else if checks.iter().any(|check| check["status"] == "warning") {
+        "warning"
+    } else {
+        "healthy"
+    }
 }
 
 #[derive(Deserialize)]
@@ -504,8 +522,39 @@ mod tests {
         assert!(MANAGER_HTML.contains("service_task: \"后台任务\""));
         assert!(MANAGER_HTML.contains("pass: \"正常\""));
         assert!(MANAGER_HTML.contains("Windows 拒绝了服务操作"));
+        assert!(MANAGER_HTML.contains("waitForServiceRecovery"));
+        assert!(MANAGER_HTML.contains("recoveryInProgress"));
         assert!(!MANAGER_HTML.contains("text(\"metric-cloud\", data.cloud.status"));
         assert!(!MANAGER_HTML.contains("${esc(item.code)}"));
         assert!(!MANAGER_HTML.contains("${esc(item.status)}"));
+        assert!(!MANAGER_HTML.contains("setTimeout(refresh, 2500)"));
+    }
+
+    #[test]
+    fn cloud_transitions_are_warnings_and_disabled_is_healthy() {
+        let connecting = cloud_check(
+            &json!({"status": "connecting", "lastError": null}),
+            "wss://example.test/connect",
+        );
+        let authenticating = cloud_check(
+            &json!({"status": "authenticating", "lastError": null}),
+            "wss://example.test/connect",
+        );
+        let disabled = cloud_check(
+            &json!({"status": "disabled", "lastError": null}),
+            "wss://example.test/connect",
+        );
+        let offline = cloud_check(
+            &json!({"status": "offline", "lastError": "connection refused"}),
+            "wss://example.test/connect",
+        );
+        assert_eq!(connecting["status"], "warning");
+        assert_eq!(authenticating["status"], "warning");
+        assert_eq!(disabled["status"], "pass");
+        assert_eq!(offline["status"], "error");
+        assert_eq!(offline["lastError"], "connection refused");
+        assert_eq!(overall_status(&[connecting]), "warning");
+        assert_eq!(overall_status(&[disabled]), "healthy");
+        assert_eq!(overall_status(&[offline]), "error");
     }
 }
