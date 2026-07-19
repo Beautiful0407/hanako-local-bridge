@@ -2,7 +2,7 @@
 
 稳定版本：`1.4.9`
 
-Rust 预发布版本：`2.0.0-alpha.8`
+Rust 预发布版本：`2.0.0-alpha.9`
 
 日期：`2026-07-19`
 
@@ -10,21 +10,21 @@ Rust 预发布版本：`2.0.0-alpha.8`
 
 ```text
 稳定渠道：1.4.9，继续用于现有 Windows 电脑
-Alpha 渠道：2.0.0-alpha.8，包含纯 Rust Bridge、Manager、Updater 和 Installer
+Alpha 渠道：2.0.0-alpha.9，包含纯 Rust Bridge、Manager、Updater 和 Installer
 云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
 ```
 
 不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。首次安装或覆盖修复必须使用内嵌安装器或签名更新清单。
 
-Alpha 8 发布文件：
+Alpha 9 发布文件：
 
 ```text
-build\rust-release-alpha8\HanakoLocalBridge-Setup-2.0.0-alpha.8.exe
-build\rust-release-alpha8\HanakoLocalBridge-2.0.0-alpha.8-win-x64.zip
-build\rust-release-alpha8\update-manifest.json
+build\rust-release-alpha9\HanakoLocalBridge-Setup-2.0.0-alpha.9.exe
+build\rust-release-alpha9\HanakoLocalBridge-2.0.0-alpha.9-win-x64.zip
+build\rust-release-alpha9\update-manifest.json
 ```
 
-Alpha 8 已验证：
+Alpha 9 已验证：
 
 ```text
 首次安装
@@ -39,16 +39,17 @@ Alpha 8 已验证：
 重复点击快捷方式只保留一个管理器窗口
 卸载注册和后台卸载
 WebView2 退出延迟时重试清理安装目录
-Alpha 7 负载升级到 Alpha 8
+Alpha 8 负载升级到 Alpha 9
 Release Bridge 的 PE 子系统为 Windows GUI，不再弹出控制台窗口
 关闭托盘管理器后 MCP 后台服务继续运行
+外部强制结束 Bridge 后，每分钟周期触发自动拉起新的无窗口进程
 预发布构建自动选择 `/local-bridge/releases/alpha/update-manifest.json`
 稳定清单和自定义清单保持隔离
 配置、data、logs 和未知用户文件保留
 签名、SHA256、大小校验和失败回滚
 ```
 
-另一台已安装旧 Node、Alpha 5、Alpha 6 或 Alpha 7 的电脑不需要先卸载。直接运行 `HanakoLocalBridge-Setup-2.0.0-alpha.8.exe` 覆盖安装即可，安装器会停止旧任务和进程、等待端口释放、安装无控制台窗口的 Rust 服务，并保留现有配置与数据。Alpha 7 可以直接通过管理器在线更新到 Alpha 8。
+另一台已安装旧 Node 或旧 Alpha 的电脑不需要先卸载。直接运行 `HanakoLocalBridge-Setup-2.0.0-alpha.9.exe` 覆盖安装即可，安装器会停止旧任务和进程、等待端口释放、安装无控制台窗口且支持周期自愈的 Rust 服务，并保留现有配置与数据。Alpha 8 可以直接通过管理器在线更新到 Alpha 9。
 
 ## 1. 目标
 

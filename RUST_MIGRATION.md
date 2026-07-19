@@ -2,24 +2,24 @@
 
 ## Status
 
-The Rust implementation is currently `2.0.0-alpha.8`.
+The Rust implementation is currently `2.0.0-alpha.9`.
 
-Alpha 8 contains the Windows bridge, manager, signed updater, and embedded installer. The release Bridge now uses the Windows GUI subsystem, so Task Scheduler runs it without allocating a visible console window. Debug builds remain console applications, redirected service-command JSON still works, and closing the manager leaves the independent background Bridge running. The separate Alpha feed and recovery behavior remain in place. The compatible Linux cloud router remains deployed at Alpha 2.
+Alpha 9 contains the Windows bridge, manager, signed updater, and embedded installer. Alpha 8 moved the release Bridge to the Windows GUI subsystem so Task Scheduler runs it without allocating a visible console window. Alpha 9 adds a one-minute repeating trigger alongside the logon trigger while preserving `MultipleInstancesPolicy=IgnoreNew`; a force-terminated Bridge therefore returns automatically without creating duplicate healthy instances. Debug builds remain console applications, redirected service-command JSON still works, and closing the manager leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
 
-Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 8 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
+Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 9 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
 
 ## Why Rust
 
 The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. The Rust design produces three Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems.
 
-Measured from the rebuilt Windows x64 Alpha 8 release:
+Measured from the rebuilt Windows x64 Alpha 9 release:
 
 ```text
-hanako-bridge.exe       6,267,392 bytes
+hanako-bridge.exe       6,272,000 bytes
 hanako-manager.exe      2,299,904 bytes
 hanako-maintenance.exe  5,707,264 bytes
-runtime ZIP             6,674,871 bytes
-embedded installer      8,898,048 bytes
+runtime ZIP             6,678,257 bytes
+embedded installer      8,901,632 bytes
 ```
 
 For comparison, the stable `1.4.9` installer is about `95.91 MiB`. On the cloud host, the Rust device router used about `5.1 MiB` after the observation period; the replaced Node router used about `48.8 MiB`.
@@ -134,6 +134,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace --release
+cargo build --workspace
 $env:HANAKO_RUST_BRIDGE_EXE = (Resolve-Path 'target\release\hanako-bridge.exe').Path
 node tests\rust-integration.test.cjs
 node tests\rust-audit.test.cjs
@@ -145,7 +146,7 @@ $manager = Start-Process target\release\hanako-manager.exe -ArgumentList '--smok
 if ($manager.ExitCode -ne 0) { throw "Manager smoke test failed" }
 ```
 
-The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 8 takeover, asserts the installed Bridge PE subsystem is Windows GUI, calls the installed manager repair API, checks overwrite and manager single-instance behavior, closes the manager while confirming the Bridge stays healthy, and uninstalls after WebView2 startup. The update smoke test installs an Alpha 7 payload, injects the current Alpha 8 maintenance binary, and verifies deterministic signed update handoff.
+The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 9 takeover, asserts the installed Bridge PE subsystem is Windows GUI, checks the one-minute task trigger, calls the installed manager repair API, checks overwrite and manager single-instance behavior, closes the manager while confirming the Bridge stays healthy, force-terminates the Bridge, waits for a different process ID to recover without a visible window, and then uninstalls. The update smoke test installs an Alpha 8 payload, injects the current Alpha 9 maintenance binary, and verifies deterministic signed update handoff.
 
 ## Release Packaging
 
@@ -162,16 +163,16 @@ cargo build --workspace --release
 
 target\release\hanako-maintenance.exe pack `
   --binaries target\release `
-  --output build\rust-release-alpha8 `
+  --output build\rust-release-alpha9 `
   --public-key update-public-key.xml `
-  --version 2.0.0-alpha.8 `
+  --version 2.0.0-alpha.9 `
   --channel alpha `
-  --package-url HanakoLocalBridge-2.0.0-alpha.8-win-x64.zip `
+  --package-url HanakoLocalBridge-2.0.0-alpha.9-win-x64.zip `
   --signing-key "$env:USERPROFILE\.hanako-update-signing\private-key.xml" `
-  --notes "Hanako Local Bridge Rust 2.0.0-alpha.8: invisible persistent background service"
+  --notes "Hanako Local Bridge Rust 2.0.0-alpha.9: periodic self-healing background service"
 
 $env:HANA_INSTALLER_PAYLOAD = (
-  Resolve-Path 'build\rust-release-alpha8\HanakoLocalBridge-2.0.0-alpha.8-win-x64.zip'
+  Resolve-Path 'build\rust-release-alpha9\HanakoLocalBridge-2.0.0-alpha.9-win-x64.zip'
 ).Path
 cargo build -p hanako-bootstrap --release
 ```
@@ -244,7 +245,7 @@ The previous Node script and a root-only timestamped backup remain on the server
 
 ## Remaining Production Work
 
-1. Publish the signed Alpha 8 installer and manifest to the separate prerelease channel.
+1. Publish the signed Alpha 9 installer and manifest to the separate prerelease channel.
 2. Verify installation, tray behavior, update, uninstall, and reboot recovery on clean Windows 10 and Windows 11 virtual machines.
 3. Run a staged migration on a non-primary device before offering the Rust installer to the stable fleet.
 4. Keep the Node/PowerShell/VBS/WinUI implementation until stable clients have completed a rollback-capable migration.

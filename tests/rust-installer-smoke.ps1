@@ -8,11 +8,11 @@ $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $installRoot = Join-Path $testRoot "install"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha8\HanakoLocalBridge-Setup-2.0.0-alpha.8.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha8\HanakoLocalBridge-2.0.0-alpha.8-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke"
-$taskName = "Hanako Rust Alpha8 Smoke MCP"
-$actionTaskName = "Hanako Rust Alpha8 Smoke Manager Action"
+$installer = Join-Path $buildRoot "rust-release-alpha9\HanakoLocalBridge-Setup-2.0.0-alpha.9.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha9\HanakoLocalBridge-2.0.0-alpha.9-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha9Smoke"
+$taskName = "Hanako Rust Alpha9 Smoke MCP"
+$actionTaskName = "Hanako Rust Alpha9 Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
 $legacyServer = Join-Path $installRoot "legacy-server.cjs"
 $legacyLauncher = Join-Path $installRoot "run-legacy-hidden.vbs"
@@ -69,10 +69,10 @@ function Test-BridgeHealth {
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.8" -and
+      $health.version -eq "2.0.0-alpha.9" -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.8"
+      $approvalHealth.version -eq "2.0.0-alpha.9"
     )
   } catch {
     return $false
@@ -200,6 +200,18 @@ function Get-InstalledManagerProcesses([string]$ManagerPath) {
   )
 }
 
+function Get-InstalledBridgeProcesses([string]$BridgePath) {
+  return @(
+    Get-Process -Name "hanako-bridge" -ErrorAction SilentlyContinue | Where-Object {
+      try {
+        [string]::Equals($_.Path, $BridgePath, [System.StringComparison]::OrdinalIgnoreCase)
+      } catch {
+        $false
+      }
+    }
+  )
+}
+
 function Stop-LegacyFixtureProcesses {
   Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
@@ -247,8 +259,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 8 installer is missing."
-  Assert-Path $payload "Rust Alpha 8 payload is missing."
+  Assert-Path $installer "Rust Alpha 9 installer is missing."
+  Assert-Path $payload "Rust Alpha 9 payload is missing."
 
   New-Item -ItemType Directory -Force -Path $installRoot, $profileRoot, $appDataRoot | Out-Null
 
@@ -288,7 +300,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha8 Smoke"
+      taskPrefix = "Hanako Rust Alpha9 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -336,10 +348,14 @@ try {
     throw "$($_.Exception.Message) Diagnostics: $diagnostics"
   }
   Wait-Until { Test-TaskExists } "Rust scheduled task was not installed."
+  $taskXml = Export-ScheduledTask -TaskName $taskName
+  if ($taskXml -notmatch "<TimeTrigger>" -or $taskXml -notmatch "<Interval>PT1M</Interval>") {
+    throw "Rust scheduled task does not contain the periodic self-healing trigger."
+  }
   Assert-Path (Join-Path $profileRoot "Desktop\Hanako Local Bridge.lnk") "Desktop shortcut was not created."
   Set-Stage "first install assertions passed"
   Assert-Path (Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk") "Start menu shortcut was not created."
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha9Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -388,6 +404,27 @@ try {
   $managerProcess = $null
   Wait-Until { Test-BridgeHealth } "Closing the manager stopped the background bridge service."
 
+  $stage = "periodic service recovery"
+  Set-Stage $stage
+  $bridgePath = Join-Path $installRoot "hanako-bridge.exe"
+  $bridgeProcesses = @(Get-InstalledBridgeProcesses $bridgePath)
+  if ($bridgeProcesses.Count -ne 1) {
+    throw "Expected one installed bridge before the recovery test, found $($bridgeProcesses.Count)."
+  }
+  $oldBridgeId = $bridgeProcesses[0].Id
+  Stop-Process -Id $oldBridgeId -Force
+  Wait-Until {
+    if (-not (Test-BridgeHealth)) {
+      return $false
+    }
+    $current = @(Get-InstalledBridgeProcesses $bridgePath)
+    return $current.Count -eq 1 -and $current[0].Id -ne $oldBridgeId
+  } "The periodic task trigger did not recover the terminated bridge." 90
+  $recoveredBridge = @(Get-InstalledBridgeProcesses $bridgePath)[0]
+  if ($recoveredBridge.MainWindowHandle -ne 0) {
+    throw "The recovered bridge opened a visible window."
+  }
+
   $stage = "uninstall"
   Set-Stage $stage
   $exitCode = Invoke-Installer @("--uninstall", "--install-root", $installRoot)
@@ -396,7 +433,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $installRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha9Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -419,7 +456,7 @@ try {
       Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha9Smoke" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData

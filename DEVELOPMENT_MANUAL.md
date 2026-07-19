@@ -22,7 +22,7 @@ tests/rust-update-smoke.ps1
 
 `hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面；`hanako-maintenance` 负责签名下载、事务更新和回滚；`hanako-bootstrap` 负责内嵌安装、快捷方式和卸载；`hanako-device-router` 负责 Linux 多设备路由和离线队列。
 
-当前 Windows Rust 版本为 `2.0.0-alpha.8`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 8 将 Release `hanako-bridge.exe` 编译为 Windows GUI 子系统，计划任务启动时不会再出现控制台窗口；Debug 构建仍保留控制台，服务命令的重定向 JSON 输出也保持可用。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务。Alpha 7 的独立更新源、更新检查重试和 Alpha 6 的恢复轮询继续保留；Windows 稳定渠道仍为 `1.4.9`。
+当前 Windows Rust 版本为 `2.0.0-alpha.9`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 8 将 Release `hanako-bridge.exe` 编译为 Windows GUI 子系统，计划任务启动时不会再出现控制台窗口；Alpha 9 在登录触发之外增加每分钟周期触发，并继续使用 `IgnoreNew` 保证正常运行时只有一个 Bridge。这样既能处理正常非零退出，也能覆盖外部强制终止返回 `0xFFFFFFFF`、`RestartOnFailure` 未触发的情况。Debug 构建仍保留控制台，服务命令的重定向 JSON 输出也保持可用。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务；Windows 稳定渠道仍为 `1.4.9`。
 
 完整质量门：
 
@@ -31,6 +31,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace --release
+cargo build --workspace
 node tests\rust-integration.test.cjs
 node tests\rust-audit.test.cjs
 node tests\rust-recovery.test.cjs

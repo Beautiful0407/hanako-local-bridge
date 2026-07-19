@@ -8,7 +8,7 @@ backups.
 
 ```text
 Windows stable bridge: 1.4.9
-Windows Rust preview:  2.0.0-alpha.8
+Windows Rust preview:  2.0.0-alpha.9
 Cloud Hana:            current compatible deployment
 Device Router:         2.0.0-alpha.2 (Rust)
 ```

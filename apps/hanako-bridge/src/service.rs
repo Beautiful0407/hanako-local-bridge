@@ -382,6 +382,7 @@ fn task_xml(
 ) -> String {
     let description = format!("Hanako Local Bridge Rust service: {task_name}");
     let restart_minutes = restart_delay_seconds.saturating_add(59).max(60) / 60;
+    let watchdog_start = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z");
     format!(
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -393,6 +394,14 @@ fn task_xml(
       <Enabled>true</Enabled>
       <UserId>{}</UserId>
     </LogonTrigger>
+    <TimeTrigger>
+      <StartBoundary>{}</StartBoundary>
+      <Repetition>
+        <Interval>PT{}M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -435,6 +444,8 @@ fn task_xml(
 "#,
         xml_escape(&description),
         xml_escape(user),
+        watchdog_start,
+        restart_minutes,
         xml_escape(user),
         restart_minutes,
         xml_escape(executable.to_string_lossy().as_ref()),
@@ -561,6 +572,10 @@ mod tests {
         assert!(xml.contains("hanako-bridge.exe"));
         assert!(xml.contains("--service"));
         assert!(xml.contains("<Interval>PT1M</Interval>"));
+        assert!(xml.contains("<TimeTrigger>"));
+        assert!(xml.contains("<StartBoundary>"));
+        assert!(xml.contains("<StopAtDurationEnd>false</StopAtDurationEnd>"));
+        assert!(xml.contains("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"));
         assert!(!xml.contains("powershell"));
         assert!(!xml.contains("wscript"));
         assert!(!xml.contains("node.exe"));

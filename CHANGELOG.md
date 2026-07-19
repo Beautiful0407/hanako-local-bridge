@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.9 - 2026-07-19
+
+- Adds a one-minute repeating Task Scheduler trigger to the existing logon trigger.
+- Keeps `MultipleInstancesPolicy=IgnoreNew`, so the periodic trigger does not create duplicate Bridge processes while the service is healthy.
+- Recovers the background Bridge after an external force termination that Task Scheduler reports as `0xFFFFFFFF` and does not handle through `RestartOnFailure`.
+- Extends the installed-service smoke test to terminate the Bridge, wait for a different process ID, verify both health endpoints, and assert that the recovered process has no visible window.
+- Advances signed update coverage from Alpha 8 to Alpha 9.
+
 ## 2.0.0-alpha.8 - 2026-07-19
 
 - Builds the release `hanako-bridge.exe` as a Windows GUI subsystem executable so Task Scheduler can run it without allocating a visible console window.
