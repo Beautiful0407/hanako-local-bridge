@@ -1,8 +1,10 @@
 data/
 logs/*.log
 .codegraph/
+.playwright-cli/
 build/
 release/
+target/
 manager-winui/bin/
 manager-winui/obj/
 *.backup-*.md

@@ -2,6 +2,12 @@
 
 云端 Hana Agent 使用的 Windows 本地文件读写与 PowerShell/Python 执行桥。
 
+## Rust 2.0 Alpha 迁移
+
+仓库已加入 `2.0.0-alpha.1` Rust 实现，用于逐步替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。当前 Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket 连接、后台任务控制、管理页面以及 WebView2 托盘管理器。
+
+当前正式安装和在线更新仍以稳定版 `1.4.9` 为准。Rust Alpha 尚未替换生产安装器、签名在线更新器和 Linux 云端设备路由，因此不要直接覆盖现有安装目录。迁移状态、构建方式、兼容边界和剩余工作见 `RUST_MIGRATION.md`。
+
 ## 当前生效配置：v1.4.1 安全连接与 HTTPS 签名更新版
 
 `v1.4.1` 为本地 MCP 增加 Bearer Token、Origin/Host 防护和请求体上限；云端改用受信任的 HTTPS/WSS；设置保存会保留额外根目录；远程更新必须通过 RSA 签名、SHA256 和大小校验，并从云服务器的公开 HTTPS 稳定清单获取。GitHub 源码仓库可以继续保持私有。

@@ -1,5 +1,21 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
+## Rust 2.0 Alpha 开发入口
+
+Rust 工作区位于：
+
+```text
+Cargo.toml
+crates/hanako-bridge-core
+apps/hanako-bridge
+apps/hanako-manager
+tests/rust-integration.test.cjs
+```
+
+`hanako-bridge-core` 负责兼容配置、设备身份、路径解析和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面。
+
+Rust Alpha 的完整构建、测试、数据兼容和迁移边界见 `RUST_MIGRATION.md`。在安装器、签名更新器和云端路由完成迁移前，保留 Node/PowerShell/WinUI 代码用于稳定版 `1.4.9` 的维护，不要提前删除。
+
 ## v1.4.1 安全入口、WSS 与签名更新
 
 `server.cjs` 的 `/mcp` 只接受 loopback Host、拒绝浏览器 Origin，并要求 `Authorization: Bearer <data\approval-token.txt>`。MCP 和审批接口请求体上限为 1 MiB。

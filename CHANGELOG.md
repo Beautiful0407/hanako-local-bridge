@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.1 - 2026-07-19
+
+- Added a Rust workspace with shared configuration, device identity, path resolution, and crash-safe JSON storage.
+- Ported the Windows MCP bridge, all 31 filesystem and execution tools, approval modes, job runner, cloud WebSocket connector, and scheduled-task service controls to Rust.
+- Added a lightweight Rust WebView2 manager with overview, diagnostics, roots, logs, settings, tray restore, and tray exit behavior.
+- Added debug and release EXE integration coverage, including token authentication, atomic writes, SHA256 concurrency checks, UTF-16, images, search, watches, PowerShell jobs, private-network CORS, manager HTML, and favicon behavior.
+- Kept the production `1.4.9` installer and updater unchanged until the Rust updater, installer payload, and Linux device router are complete.
+
 ## 1.4.9 - 2026-07-18
 
 - Added a verified handoff between the manager and the detached online updater before the manager exits.

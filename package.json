@@ -19,6 +19,7 @@
     "test:configure": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./tests/configure.test.ps1",
     "test:update-signature": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./tests/update-signature.test.ps1",
     "test:integration": "node tests/integration.test.cjs",
+    "test:rust": "node tests/rust-integration.test.cjs",
     "test:full-trust": "node tests/full-trust.test.cjs",
     "test:recovery": "node tests/recovery.test.cjs",
     "test:device-router": "node tests/device-router.test.cjs",

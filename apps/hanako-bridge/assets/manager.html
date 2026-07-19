@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'">
+  <title>Hanako Local Bridge</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: #f4f5f7;
+      color: #202124;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 720px; background: #f4f5f7; color: #202124; }
+    button, input, select { font: inherit; }
+    button { min-height: 32px; border: 1px solid #b8bec6; background: #fff; color: #202124; padding: 0 13px; border-radius: 6px; cursor: pointer; }
+    button:hover { background: #f0f3f7; }
+    button.primary { background: #1769aa; color: #fff; border-color: #1769aa; }
+    button.danger { color: #a12622; }
+    input, select { width: 100%; min-height: 34px; border: 1px solid #b8bec6; border-radius: 5px; padding: 5px 9px; background: #fff; color: #202124; }
+    .app { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 100vh; }
+    aside { background: #eef0f3; border-right: 1px solid #d5d9df; padding: 16px 10px; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font-weight: 650; }
+    .brand-mark { width: 24px; height: 24px; border-radius: 5px; background: #1769aa; color: #fff; display: grid; place-items: center; font-size: 12px; }
+    nav { display: grid; gap: 3px; }
+    nav button { border: 0; background: transparent; text-align: left; width: 100%; min-height: 38px; padding: 0 10px; }
+    nav button.active { background: #dce7f2; color: #0f568e; font-weight: 600; }
+    main { min-width: 0; }
+    header { height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #d9dde3; background: #fff; }
+    .header-title { font-weight: 650; }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #81878f; }
+    .dot.pass { background: #27864d; }
+    .dot.warning { background: #c47a13; }
+    .dot.error { background: #bd3434; }
+    .page { display: none; padding: 22px 26px 34px; max-width: 1180px; }
+    .page.active { display: block; }
+    h1 { margin: 0; font-size: 24px; font-weight: 650; }
+    h2 { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
+    .subtitle { margin: 5px 0 20px; color: #66707a; font-size: 13px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); border: 1px solid #d9dde3; background: #fff; border-radius: 7px; overflow: hidden; }
+    .metric { padding: 15px 17px; border-left: 1px solid #e1e4e8; }
+    .metric:first-child { border-left: 0; }
+    .metric-label { color: #68717b; font-size: 12px; }
+    .metric-value { margin-top: 6px; font-size: 19px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .section { margin-top: 18px; background: #fff; border: 1px solid #d9dde3; border-radius: 7px; padding: 17px; }
+    .kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px 18px; margin: 0; }
+    .kv dt { color: #68717b; }
+    .kv dd { margin: 0; min-width: 0; word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e4e7eb; padding: 9px 8px; text-align: left; vertical-align: top; font-size: 13px; }
+    th { color: #68717b; font-weight: 600; }
+    tr:last-child td { border-bottom: 0; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; background: #edf0f3; font-size: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+    label { display: grid; gap: 6px; color: #59636e; font-size: 13px; }
+    label.wide { grid-column: 1 / -1; }
+    .root-row { display: grid; grid-template-columns: 150px minmax(240px, 1fr) 120px 36px; gap: 8px; margin-top: 8px; }
+    .root-row button { padding: 0; font-size: 18px; }
+    pre { margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 14px; background: #15181c; color: #e7eaf0; border-radius: 6px; font: 12px/1.55 Consolas, monospace; white-space: pre-wrap; }
+    .message { min-height: 22px; margin-top: 10px; color: #1769aa; font-size: 13px; }
+    @media (prefers-color-scheme: dark) {
+      :root, body { background: #17191c; color: #edf0f3; }
+      aside { background: #202328; border-color: #343941; }
+      header, .section, .metrics { background: #202328; border-color: #363b43; }
+      .metric { border-color: #363b43; }
+      input, select, button { background: #282c32; color: #edf0f3; border-color: #484f59; }
+      nav button.active { background: #273f54; color: #9bc9ef; }
+      th, td { border-color: #373c44; }
+      .badge { background: #343a42; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand"><span class="brand-mark">H</span><span>Hanako Bridge</span></div>
+    <nav>
+      <button class="active" data-page="overview">运行概览</button>
+      <button data-page="diagnostics">诊断与修复</button>
+      <button data-page="files">本地目录</button>
+      <button data-page="logs">日志</button>
+      <button data-page="settings">设置</button>
+    </nav>
+  </aside>
+  <main>
+    <header>
+      <span class="header-title" id="header-device">正在检测...</span>
+      <span class="status"><span class="dot" id="header-dot"></span><span id="header-status">检测中</span></span>
+    </header>
+
+    <section class="page active" id="page-overview">
+      <h1>运行概览</h1>
+      <p class="subtitle">本机 Rust 服务、云端连接和后台任务的实时状态。</p>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">本地 MCP</div><div class="metric-value" id="metric-mcp">-</div></div>
+        <div class="metric"><div class="metric-label">云端连接</div><div class="metric-value" id="metric-cloud">-</div></div>
+        <div class="metric"><div class="metric-label">后台任务</div><div class="metric-value" id="metric-task">-</div></div>
+        <div class="metric"><div class="metric-label">版本</div><div class="metric-value" id="metric-version">-</div></div>
+      </div>
+      <div class="section">
+        <h2>本机信息</h2>
+        <dl class="kv">
+          <dt>设备 ID</dt><dd id="detail-device-id">-</dd>
+          <dt>设备名称</dt><dd id="detail-device-name">-</dd>
+          <dt>MCP 地址</dt><dd id="detail-mcp">-</dd>
+          <dt>状态地址</dt><dd id="detail-status">-</dd>
+          <dt>访问模式</dt><dd id="detail-trust">-</dd>
+          <dt>云端地址</dt><dd id="detail-cloud-url">-</dd>
+          <dt>配置文件</dt><dd id="detail-config">-</dd>
+          <dt>安装目录</dt><dd id="detail-install">-</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="page" id="page-diagnostics">
+      <h1>诊断与修复</h1>
+      <p class="subtitle">检测配置、服务任务、本地端口和云端连接。</p>
+      <div class="section">
+        <div class="actions">
+          <button id="refresh-button">立即检测</button>
+          <button class="primary" data-action="repair">检测并修复</button>
+          <button data-action="restart">重启服务</button>
+          <button class="danger" data-action="stop">停止服务</button>
+        </div>
+        <div class="message" id="diagnostic-message"></div>
+      </div>
+      <div class="section"><table><thead><tr><th>检查项</th><th>状态</th><th>详情</th></tr></thead><tbody id="check-rows"></tbody></table></div>
+    </section>
+
+    <section class="page" id="page-files">
+      <h1>本地目录</h1>
+      <p class="subtitle">当前 Agent 能访问的 Windows 目录及读写模式。</p>
+      <div class="section"><table><thead><tr><th>别名</th><th>路径</th><th>权限</th><th>来源</th></tr></thead><tbody id="root-rows"></tbody></table></div>
+    </section>
+
+    <section class="page" id="page-logs">
+      <h1>日志</h1>
+      <p class="subtitle">读取本地服务、执行任务和审计日志的尾部。</p>
+      <div class="section">
+        <div class="actions"><select id="log-select" style="max-width:420px"></select><button id="log-refresh">刷新日志</button></div>
+        <div style="height:12px"></div>
+        <pre id="log-content">请选择日志。</pre>
+      </div>
+    </section>
+
+    <section class="page" id="page-settings">
+      <h1>设置</h1>
+      <p class="subtitle">保存后 Rust 服务会自动重启并加载新配置。</p>
+      <form class="section" id="settings-form">
+        <div class="form-grid">
+          <label>设备 ID<input id="setting-device-id" required></label>
+          <label>设备名称<input id="setting-device-name" required></label>
+          <label>访问模式<select id="setting-trust"><option value="full">完全信任</option><option value="approval">逐项审批</option></select></label>
+          <label>云端连接<select id="setting-cloud-enabled"><option value="true">启用</option><option value="false">停用</option></select></label>
+          <label>MCP 端口<input id="setting-mcp-port" type="number" min="1024" max="65535"></label>
+          <label>状态端口<input id="setting-approval-port" type="number" min="1024" max="65535"></label>
+          <label class="wide">云端 WebSocket<input id="setting-cloud-url"></label>
+          <label class="wide">更新清单<input id="setting-update-manifest"></label>
+        </div>
+        <div style="height:18px"></div>
+        <h2>授权根目录</h2>
+        <div id="root-editor"></div>
+        <div class="actions" style="margin-top:10px"><button type="button" id="add-root">添加目录</button></div>
+        <div class="actions" style="margin-top:18px"><button class="primary" type="submit">保存并重启</button></div>
+        <div class="message" id="settings-message"></div>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+const TOKEN = "__HANA_APPROVAL_TOKEN__";
+const headers = { "Content-Type": "application/json", "X-Approval-Token": TOKEN };
+let snapshot = null;
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { ...options, headers: { ...headers, ...(options.headers || {}) } });
+  const value = await response.json();
+  if (!response.ok) throw new Error(value.error || `HTTP ${response.status}`);
+  return value;
+}
+
+function text(id, value) { document.getElementById(id).textContent = value ?? "-"; }
+function esc(value) { return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch])); }
+
+function render(data) {
+  snapshot = data;
+  const healthy = data.overall === "healthy";
+  text("header-device", `${data.device.name} · ${data.device.id}`);
+  text("header-status", healthy ? "运行正常" : "需要处理");
+  document.getElementById("header-dot").className = `dot ${healthy ? "pass" : "error"}`;
+  text("metric-mcp", data.service.healthOk ? "在线" : "离线");
+  text("metric-cloud", data.cloud.status || "离线");
+  text("metric-task", data.service.taskExists ? "已安装" : "缺失");
+  text("metric-version", data.version);
+  text("detail-device-id", data.device.id);
+  text("detail-device-name", data.device.name);
+  text("detail-mcp", `http://127.0.0.1:${data.local.mcpPort}/mcp`);
+  text("detail-status", `http://127.0.0.1:${data.local.statusPort}/manager/`);
+  text("detail-trust", data.local.trustMode);
+  text("detail-cloud-url", data.cloud.cloudUrl);
+  text("detail-config", data.configPath);
+  text("detail-install", data.installRoot);
+  document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(item.code)}</td><td><span class="badge">${esc(item.status)}</span></td><td>${esc(item.detail)}</td></tr>`).join("");
+  document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(root.mode)}</td><td>${esc(root.source)}</td></tr>`).join("");
+  fillSettings(data.settings);
+}
+
+function fillSettings(settings) {
+  textValue("setting-device-id", settings.deviceId);
+  textValue("setting-device-name", settings.deviceName);
+  textValue("setting-trust", settings.trustMode);
+  textValue("setting-cloud-enabled", String(settings.cloudEnabled));
+  textValue("setting-mcp-port", settings.mcpPort);
+  textValue("setting-approval-port", settings.approvalPort);
+  textValue("setting-cloud-url", settings.cloudUrl);
+  textValue("setting-update-manifest", settings.updateManifest);
+  const editor = document.getElementById("root-editor");
+  editor.innerHTML = "";
+  settings.roots.forEach(addRootRow);
+}
+function textValue(id, value) { document.getElementById(id).value = value ?? ""; }
+function addRootRow(root = { name: "", path: "", mode: "read_write" }) {
+  const row = document.createElement("div");
+  row.className = "root-row";
+  row.innerHTML = `<input class="root-name" placeholder="别名" value="${esc(root.name)}"><input class="root-path" placeholder="C:\\路径" value="${esc(root.path)}"><select class="root-mode"><option value="read_write">读写</option><option value="read">只读</option></select><button type="button" title="删除">×</button>`;
+  row.querySelector(".root-mode").value = root.mode;
+  row.querySelector("button").onclick = () => row.remove();
+  document.getElementById("root-editor").appendChild(row);
+}
+
+async function refresh() {
+  try { render(await api("/api/manager/snapshot")); }
+  catch (error) { text("header-status", error.message); document.getElementById("header-dot").className = "dot error"; }
+}
+
+async function loadLogs() {
+  const result = await api("/api/manager/logs");
+  const select = document.getElementById("log-select");
+  const previous = select.value;
+  select.innerHTML = result.logs.map(log => `<option value="${esc(log.name)}">${esc(log.name)} (${log.length} B)</option>`).join("");
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  if (select.value) await loadLogTail();
+}
+async function loadLogTail() {
+  const name = document.getElementById("log-select").value;
+  if (!name) return;
+  const result = await api(`/api/manager/logs/${name.split("/").map(encodeURIComponent).join("/")}`);
+  text("log-content", result.content || "(空)");
+}
+
+document.querySelectorAll("nav button").forEach(button => button.onclick = () => {
+  document.querySelectorAll("nav button").forEach(item => item.classList.toggle("active", item === button));
+  document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === `page-${button.dataset.page}`));
+  if (button.dataset.page === "logs") loadLogs().catch(error => text("log-content", error.message));
+});
+document.getElementById("refresh-button").onclick = refresh;
+document.getElementById("log-refresh").onclick = () => loadLogs().catch(error => text("log-content", error.message));
+document.getElementById("log-select").onchange = () => loadLogTail().catch(error => text("log-content", error.message));
+document.getElementById("add-root").onclick = () => addRootRow();
+document.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
+  const message = document.getElementById("diagnostic-message");
+  try {
+    message.textContent = "正在提交操作...";
+    await api("/api/manager/action", { method: "POST", body: JSON.stringify({ action: button.dataset.action }) });
+    message.textContent = "操作已提交，服务状态稍后刷新。";
+    setTimeout(refresh, 2500);
+  } catch (error) { message.textContent = error.message; }
+});
+document.getElementById("settings-form").onsubmit = async event => {
+  event.preventDefault();
+  const message = document.getElementById("settings-message");
+  const roots = [...document.querySelectorAll(".root-row")].map(row => ({
+    name: row.querySelector(".root-name").value,
+    path: row.querySelector(".root-path").value,
+    mode: row.querySelector(".root-mode").value
+  }));
+  try {
+    message.textContent = "正在保存...";
+    await api("/api/manager/settings", {
+      method: "POST",
+      body: JSON.stringify({
+        deviceId: document.getElementById("setting-device-id").value,
+        deviceName: document.getElementById("setting-device-name").value,
+        trustMode: document.getElementById("setting-trust").value,
+        cloudEnabled: document.getElementById("setting-cloud-enabled").value === "true",
+        mcpPort: Number(document.getElementById("setting-mcp-port").value),
+        approvalPort: Number(document.getElementById("setting-approval-port").value),
+        cloudUrl: document.getElementById("setting-cloud-url").value,
+        updateManifest: document.getElementById("setting-update-manifest").value,
+        roots
+      })
+    });
+    message.textContent = "设置已保存，正在重启服务。";
+  } catch (error) { message.textContent = error.message; }
+};
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
