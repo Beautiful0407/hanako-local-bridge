@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## Rust 2.0.0-alpha.3 预发布状态
+## Rust 2.0.0-alpha.4 预发布状态
 
-Rust Alpha 3 已经包含本地桥、托盘管理器、在线更新器和 Windows 安装器；云端路由器继续运行兼容的 Rust Alpha 2。Alpha 3 修复了旧服务被误认为 Rust 服务、快捷方式重复打开多个窗口以及 WebView2 退出后卸载不完整的问题。
+Rust Alpha 4 已经包含本地桥、托盘管理器、在线更新器和 Windows 安装器；云端路由器继续运行兼容的 Rust Alpha 2。Alpha 4 可以迁移真实稳定版的 VBS、PowerShell watchdog 和脱离式 Node 进程，并保留详细的服务启动错误。
 
 当前日常使用继续运行稳定版：
 
@@ -14,7 +14,7 @@ Rust Alpha 3 已经包含本地桥、托盘管理器、在线更新器和 Window
 不要手工复制 Rust EXE 到稳定目录。测试或覆盖修复时使用：
 
 ```text
-build\rust-release-alpha3\HanakoLocalBridge-Setup-2.0.0-alpha.3.exe
+build\rust-release-alpha4\HanakoLocalBridge-Setup-2.0.0-alpha.4.exe
 ```
 
 另一台已安装旧版的电脑可直接运行该安装器覆盖修复，不需要先卸载。迁移前仍建议至少备份：
@@ -25,7 +25,7 @@ data\
 logs\
 ```
 
-Alpha 3 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
+Alpha 4 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
 
 ## v1.4.1 安全连接与图形化管理器
 

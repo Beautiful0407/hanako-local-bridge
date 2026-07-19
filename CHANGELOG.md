@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.4 - 2026-07-19
+
+- Fixed migration from stable Node installations whose scheduled task launches `wscript`, a PowerShell watchdog, and a detached `node.exe` process.
+- Detect legacy installations even when they do not contain a Rust `payload-manifest.json`.
+- Stop legacy MCP and tunnel tasks, then terminate only processes whose executable or command line belongs to the target Hanako installation directory.
+- Preserve the real bridge service repair exit code, stdout, stderr, and rollback error instead of reducing every failure to `installed bridge service failed to start`.
+- Replaced the direct-Node installer fixture with a detached VBS/Node fixture that fails on Alpha 3 and passes on Alpha 4.
+- Added signed Alpha 3-to-Alpha 4 update coverage and rebuilt the Alpha 4 ZIP, manifest, and embedded installer.
+
 ## 2.0.0-alpha.3 - 2026-07-19
 
 - Fixed the Rust manager accepting any listener on the configured approval port, which could open the legacy Node manager endpoint and display `{"error":"invalid approval token"}`.

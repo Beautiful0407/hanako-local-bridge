@@ -9,9 +9,13 @@ use std::{
 };
 
 use anyhow::{Context, ensure};
-use hanako_bridge_core::update::{
-    PayloadManifest, UpdateManifest, normalize_relative_path, read_payload_manifest, sha256_file,
-    sign_manifest, update_available, validate_payload_manifest, verify_manifest_signature,
+use hanako_bridge_core::{
+    RuntimeConfig,
+    update::{
+        PayloadManifest, UpdateManifest, normalize_relative_path, read_payload_manifest,
+        sha256_file, sign_manifest, update_available, validate_payload_manifest,
+        verify_manifest_signature,
+    },
 };
 use reqwest::blocking::Client;
 use serde::Serialize;
@@ -491,12 +495,8 @@ pub fn stop_installed_service_and_processes(install_root: &Path) -> anyhow::Resu
             .status();
     }
     let install_root = absolute(install_root)?;
+    stop_legacy_scheduled_tasks(&install_root);
     let current_pid = std::process::id();
-    let target_names = [
-        "hanako-bridge.exe",
-        "hanako-manager.exe",
-        "hanako-maintenance.exe",
-    ];
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let mut system = System::new_all();
@@ -512,13 +512,20 @@ pub fn stop_installed_service_and_processes(install_root: &Path) -> anyhow::Resu
             let Some(name) = executable.file_name().and_then(|value| value.to_str()) else {
                 continue;
             };
-            if !target_names
-                .iter()
-                .any(|target| name.eq_ignore_ascii_case(target))
-            {
-                continue;
-            }
-            if absolute(executable).is_ok_and(|path| path.starts_with(&install_root)) {
+            let executable_in_root =
+                absolute(executable).is_ok_and(|path| path.starts_with(&install_root));
+            let legacy_launcher = matches!(
+                name.to_ascii_lowercase().as_str(),
+                "node.exe"
+                    | "powershell.exe"
+                    | "pwsh.exe"
+                    | "wscript.exe"
+                    | "cscript.exe"
+                    | "cmd.exe"
+            );
+            let command_references_root =
+                legacy_launcher && command_references_path(process.cmd(), &install_root);
+            if executable_in_root || command_references_root {
                 found = true;
                 let _ = process.kill();
             }
@@ -534,6 +541,35 @@ pub fn stop_installed_service_and_processes(install_root: &Path) -> anyhow::Resu
     }
 }
 
+fn stop_legacy_scheduled_tasks(install_root: &Path) {
+    let Ok(runtime) = RuntimeConfig::load(install_root, None) else {
+        return;
+    };
+    let prefix = runtime.config.service.task_prefix.trim();
+    if prefix.is_empty() {
+        return;
+    }
+    for task_name in [format!("{prefix} MCP"), format!("{prefix} Tunnel")] {
+        let _ = hidden_command(Path::new("schtasks.exe"))
+            .args(["/End", "/TN", &task_name])
+            .status();
+    }
+}
+
+fn command_references_path(command: &[std::ffi::OsString], path: &Path) -> bool {
+    let expected = normalized_command_path(path.to_string_lossy().as_ref());
+    command.iter().any(|argument| {
+        normalized_command_path(argument.to_string_lossy().as_ref()).contains(&expected)
+    })
+}
+
+fn normalized_command_path(value: &str) -> String {
+    value
+        .trim_matches('"')
+        .replace('/', "\\")
+        .to_ascii_lowercase()
+}
+
 pub fn uninstall_installed_service_and_processes(install_root: &Path) -> anyhow::Result<()> {
     let bridge = install_root.join("hanako-bridge.exe");
     if bridge.is_file() {
@@ -547,10 +583,28 @@ pub fn uninstall_installed_service_and_processes(install_root: &Path) -> anyhow:
 pub fn start_installed_service(install_root: &Path) -> anyhow::Result<()> {
     let bridge = install_root.join("hanako-bridge.exe");
     ensure!(bridge.is_file(), "installed bridge executable is missing");
-    let status = hidden_command(&bridge)
+    let output = hidden_command(&bridge)
         .args(["--service-command", "repair"])
-        .status()?;
-    ensure!(status.success(), "installed bridge service failed to start");
+        .output()
+        .context("cannot launch installed bridge service repair")?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        anyhow::bail!(
+            "installed bridge service repair exited with {}{}{}",
+            output.status.code().unwrap_or(1),
+            if stderr.is_empty() {
+                String::new()
+            } else {
+                format!("; stderr: {stderr}")
+            },
+            if stdout.is_empty() {
+                String::new()
+            } else {
+                format!("; stdout: {stdout}")
+            }
+        );
+    }
     Ok(())
 }
 
@@ -864,5 +918,21 @@ mod tests {
                 "update-public-key.xml".to_string(),
             ])
         );
+    }
+
+    #[test]
+    fn matches_only_legacy_launchers_that_reference_the_installation() {
+        let install = Path::new(r"C:\Users\Test\AppData\Local\HanakoLocalBridge");
+        assert!(command_references_path(
+            &[
+                "node.exe".into(),
+                r"C:\Users\Test\AppData\Local\HanakoLocalBridge\server.cjs".into(),
+            ],
+            install
+        ));
+        assert!(!command_references_path(
+            &["node.exe".into(), r"C:\Work\unrelated\server.cjs".into()],
+            install
+        ));
     }
 }

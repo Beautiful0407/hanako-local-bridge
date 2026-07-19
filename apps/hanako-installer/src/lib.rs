@@ -55,11 +55,11 @@ pub fn install_package_with_installer(
     extract_zip_safely(package_path, &stage)?;
     let payload = read_payload_manifest(&stage.join("payload-manifest.json"))?;
     validate_installer_payload(&payload, &stage)?;
-    let transaction = PayloadTransaction::prepare(&install_root, &stage, &backup, payload.clone())?;
-    let existing_install = install_root.join("payload-manifest.json").is_file();
+    let existing_install = is_existing_installation(&install_root);
     if existing_install && !test_mode {
         stop_installed_service_and_processes(&install_root)?;
     }
+    let transaction = PayloadTransaction::prepare(&install_root, &stage, &backup, payload.clone())?;
     fs::create_dir_all(&install_root)?;
     transaction.apply()?;
     let config_path = install_root.join("config.json");
@@ -79,8 +79,14 @@ pub fn install_package_with_installer(
         false
     } else {
         if let Err(error) = start_installed_service(&install_root) {
-            transaction.rollback()?;
-            anyhow::bail!("installed service failed to start: {error:#}");
+            return match transaction.rollback() {
+                Ok(()) => Err(anyhow::anyhow!(
+                    "installed service failed to start: {error:#}"
+                )),
+                Err(rollback_error) => Err(anyhow::anyhow!(
+                    "installed service failed to start: {error:#}; rollback also failed: {rollback_error:#}"
+                )),
+            };
         }
         if env::var_os("HANA_INSTALLER_SKIP_MANAGER").is_none() {
             launch_installed_manager(&install_root);
@@ -94,6 +100,15 @@ pub fn install_package_with_installer(
         config_created,
         service_started,
     })
+}
+
+fn is_existing_installation(install_root: &Path) -> bool {
+    install_root.join("payload-manifest.json").is_file()
+        || install_root.join("config.json").is_file()
+        || install_root.join("server.cjs").is_file()
+        || install_root
+            .join("install-background-service.ps1")
+            .is_file()
 }
 
 pub fn uninstall_installation(install_root: &Path) -> anyhow::Result<()> {
@@ -308,5 +323,15 @@ mod tests {
             fs::read_to_string(install.join("config.json")).unwrap(),
             "{\"preserve\":true}"
         );
+    }
+
+    #[test]
+    fn recognizes_legacy_node_installations_without_a_rust_manifest() {
+        let temp = tempfile::tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        assert!(!is_existing_installation(&install));
+        fs::write(install.join("config.json"), "{}").unwrap();
+        assert!(is_existing_installation(&install));
     }
 }
