@@ -1,10 +1,13 @@
 use std::{
     collections::{HashMap, VecDeque},
+    fs::OpenOptions,
+    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
 use anyhow::Context;
+use chrono::Utc;
 use hanako_bridge_core::{DeviceIdentity, RuntimeConfig, path::PathResolver};
 use rand::{TryRngCore, rngs::OsRng};
 use serde_json::{Value, json};
@@ -48,6 +51,7 @@ pub struct AppState {
     pub cloud: OnceLock<Arc<CloudConnector>>,
     approval_token: Vec<u8>,
     path_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    audit_lock: Mutex<()>,
     pub watches: Mutex<HashMap<String, WatchRecord>>,
 }
 
@@ -110,6 +114,7 @@ impl AppState {
             cloud: OnceLock::new(),
             approval_token,
             path_locks: Mutex::new(HashMap::new()),
+            audit_lock: Mutex::new(()),
             watches: Mutex::new(HashMap::new()),
         })
     }
@@ -173,6 +178,25 @@ impl AppState {
         }
     }
 
+    pub async fn audit_mcp(&self, mut event: Value) {
+        let Some(object) = event.as_object_mut() else {
+            return;
+        };
+        object.insert(
+            "timestamp".to_string(),
+            Value::String(Utc::now().to_rfc3339()),
+        );
+        let Ok(mut line) = serde_json::to_string(&event) else {
+            return;
+        };
+        line.push('\n');
+        let path = self.log_dir.join("mcp-audit.jsonl");
+        let _guard = self.audit_lock.lock().await;
+        let _ =
+            tokio::task::spawn_blocking(move || append_rotating(&path, &line, 10 * 1024 * 1024))
+                .await;
+    }
+
     pub async fn lock_path(&self, path: &Path) -> OwnedMutexGuard<()> {
         let key = path
             .to_string_lossy()
@@ -201,4 +225,32 @@ async fn load_or_create_token(data_dir: &Path) -> anyhow::Result<Vec<u8>> {
     let token = base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes);
     tokio::fs::write(&path, format!("{token}\n")).await?;
     Ok(token.into_bytes())
+}
+
+fn append_rotating(path: &Path, line: &str, max_bytes: u64) -> std::io::Result<()> {
+    if path.exists() && fs_len(path)?.saturating_add(line.len() as u64) > max_bytes {
+        for index in (1..=5).rev() {
+            let source = path.with_extension(format!("jsonl.{index}"));
+            let destination = path.with_extension(format!("jsonl.{}", index + 1));
+            if source.exists() {
+                let _ = std::fs::remove_file(&destination);
+                let _ = std::fs::rename(source, destination);
+            }
+        }
+        let first_backup = path.with_extension("jsonl.1");
+        let _ = std::fs::remove_file(&first_backup);
+        let _ = std::fs::rename(path, first_backup);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .write_all(line.as_bytes())
+}
+
+fn fs_len(path: &Path) -> std::io::Result<u64> {
+    Ok(std::fs::metadata(path)?.len())
 }

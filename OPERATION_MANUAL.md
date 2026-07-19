@@ -1,5 +1,32 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
+## Rust 2.0.0-alpha.2 预发布状态
+
+Rust Alpha 2 已经包含本地桥、托盘管理器、在线更新器、Windows 安装器和 Linux 设备路由器。云端路由器已经升级，现有两台 `1.4.9` Windows 客户端仍可正常连接并使用全部 34 个路由工具。
+
+当前日常使用继续运行稳定版：
+
+```text
+%LOCALAPPDATA%\HanakoLocalBridge
+版本：1.4.9
+```
+
+不要手工复制 Rust EXE 到稳定目录。测试 Alpha 2 时使用：
+
+```text
+build\rust-release-alpha2\HanakoLocalBridge-Setup-2.0.0-alpha.2.exe
+```
+
+并指定独立安装目录。迁移前至少备份：
+
+```text
+config.json
+data\
+logs\
+```
+
+Alpha 2 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
+
 ## v1.4.1 安全连接与图形化管理器
 
 安装或覆盖升级 `HanakoLocalBridge-Setup-1.4.1.exe` 后，从开始菜单打开：

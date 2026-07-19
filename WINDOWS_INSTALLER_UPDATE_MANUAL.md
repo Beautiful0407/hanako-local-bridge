@@ -1,8 +1,41 @@
 # Hanako Local Bridge Windows 安装、迁移与更新手册
 
-版本：`1.4.1`
+稳定版本：`1.4.9`
 
-日期：`2026-07-18`
+Rust 预发布版本：`2.0.0-alpha.2`
+
+日期：`2026-07-19`
+
+## 0. 当前发布状态
+
+```text
+稳定渠道：1.4.9，继续用于现有 Windows 电脑
+Alpha 渠道：2.0.0-alpha.2，包含纯 Rust Bridge、Manager、Updater 和 Installer
+云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
+```
+
+不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。Alpha 测试应使用独立安装目录，正式迁移必须使用内嵌安装器或签名更新清单。
+
+Alpha 2 发布文件：
+
+```text
+build\rust-release-alpha2\HanakoLocalBridge-Setup-2.0.0-alpha.2.exe
+build\rust-release-alpha2\HanakoLocalBridge-2.0.0-alpha.2-win-x64.zip
+build\rust-release-alpha2\update-manifest.json
+```
+
+Alpha 2 已验证：
+
+```text
+首次安装
+同目录覆盖安装
+桌面和开始菜单快捷方式
+计划任务启动与恢复
+卸载注册和后台卸载
+Alpha 1 负载升级到 Alpha 2
+配置、data、logs 和未知用户文件保留
+签名、SHA256、大小校验和失败回滚
+```
 
 ## 1. 目标
 
@@ -32,8 +65,8 @@ npm.cmd run build:installer
 生成：
 
 ```text
-release\HanakoLocalBridge-Setup-1.4.1.exe
-release\HanakoLocalBridge-1.4.1-win-x64.zip
+release\HanakoLocalBridge-Setup-1.4.9.exe
+release\HanakoLocalBridge-1.4.9-win-x64.zip
 release\update-manifest.json
 ```
 
@@ -88,7 +121,7 @@ logs\
 
 ## 4. 新电脑安装
 
-1. 把 `HanakoLocalBridge-Setup-1.4.1.exe` 放到目标电脑。
+1. 把 `HanakoLocalBridge-Setup-1.4.9.exe` 放到目标电脑。
 2. 双击安装器。
 3. 在图形窗口确认设备名、设备 ID、本地文件根目录和云端 WebSocket URL。
 4. 点击 `Install / Repair`，等待成功提示。

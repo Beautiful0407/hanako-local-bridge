@@ -8,13 +8,40 @@ Rust 工作区位于：
 Cargo.toml
 crates/hanako-bridge-core
 apps/hanako-bridge
+apps/hanako-device-router
+apps/hanako-installer
 apps/hanako-manager
+apps/hanako-updater
 tests/rust-integration.test.cjs
+tests/rust-device-router.test.cjs
+tests/rust-audit.test.cjs
+tests/rust-recovery.test.cjs
+tests/rust-installer-smoke.ps1
+tests/rust-update-smoke.ps1
 ```
 
-`hanako-bridge-core` 负责兼容配置、设备身份、路径解析和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面。
+`hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面；`hanako-maintenance` 负责签名下载、事务更新和回滚；`hanako-bootstrap` 负责内嵌安装、快捷方式和卸载；`hanako-device-router` 负责 Linux 多设备路由和离线队列。
 
-Rust Alpha 的完整构建、测试、数据兼容和迁移边界见 `RUST_MIGRATION.md`。在安装器、签名更新器和云端路由完成迁移前，保留 Node/PowerShell/WinUI 代码用于稳定版 `1.4.9` 的维护，不要提前删除。
+当前 Rust 版本为 `2.0.0-alpha.2`。安装器、签名更新器和云端路由已经完成迁移并通过实机验证；Windows 稳定渠道仍为 `1.4.9`。保留 Node/PowerShell/WinUI 代码用于稳定版维护和回滚，不要提前删除。
+
+完整质量门：
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo build --workspace --release
+node tests\rust-integration.test.cjs
+node tests\rust-audit.test.cjs
+node tests\rust-recovery.test.cjs
+node tests\rust-device-router.test.cjs
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-update-smoke.ps1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-installer-smoke.ps1
+```
+
+发布时先用 `hanako-maintenance pack` 生成签名 ZIP 和 manifest，再设置 `HANA_INSTALLER_PAYLOAD` 构建 `hanako-bootstrap`。生产私钥只位于 `%USERPROFILE%\.hanako-update-signing\private-key.xml`，不得提交到 Git。
+
+Rust Alpha 的完整构建、测试、数据兼容和迁移边界见 `RUST_MIGRATION.md`。
 
 ## v1.4.1 安全入口、WSS 与签名更新
 

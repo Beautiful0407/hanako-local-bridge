@@ -4,11 +4,11 @@
 
 ## Rust 2.0 Alpha 迁移
 
-仓库已加入 `2.0.0-alpha.1` Rust 实现，用于逐步替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。当前 Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket 连接、后台任务控制、管理页面以及 WebView2 托盘管理器。
+仓库当前包含 `2.0.0-alpha.2` Rust 实现，用于替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket、后台任务、WebView2 托盘管理器、签名更新器、内嵌安装器和 Linux 多设备路由器。
 
-当前正式安装和在线更新仍以稳定版 `1.4.9` 为准。Rust Alpha 尚未替换生产安装器、签名在线更新器和 Linux 云端设备路由，因此不要直接覆盖现有安装目录。迁移状态、构建方式、兼容边界和剩余工作见 `RUST_MIGRATION.md`。
+`2.0.0-alpha.2` 已通过安装、覆盖、卸载、签名更新、任务恢复、审计、云端协议和真实设备路由测试；云服务器的设备路由器已经运行 Rust Alpha 2。Windows 正式安装和在线更新仍以稳定版 `1.4.9` 为准，不要手工把 Alpha EXE 覆盖到现有安装目录。迁移状态、构建方式、兼容边界和发布门槛见 `RUST_MIGRATION.md`。
 
-## 当前生效配置：v1.4.1 安全连接与 HTTPS 签名更新版
+## 当前稳定配置：v1.4.9 安全连接与 HTTPS 签名更新版
 
 `v1.4.1` 为本地 MCP 增加 Bearer Token、Origin/Host 防护和请求体上限；云端改用受信任的 HTTPS/WSS；设置保存会保留额外根目录；远程更新必须通过 RSA 签名、SHA256 和大小校验，并从云服务器的公开 HTTPS 稳定清单获取。GitHub 源码仓库可以继续保持私有。
 
@@ -33,7 +33,7 @@
 
 原生管理器启动前会先执行快速自检。原生程序缺失或自检失败时，`run-manager.vbs` 自动回退到旧 WinForms 管理器，不影响修复和设备认领。
 
-如果 Hana 网页只显示一台电脑，先在缺失的电脑安装 `v1.4.1`，打开管理器检查云端状态：
+如果 Hana 网页只显示一台电脑，先在缺失的电脑安装 `v1.4.9`，打开管理器检查云端状态：
 
 ```text
 active：已经认领并在线
@@ -62,9 +62,10 @@ offline：未连接，点击“检测并修复”
 当前版本组合：
 
 ```text
-Windows Bridge: 1.4.1
-Cloud Hana:     0.401.11
-Device Router: 0.8.1
+Windows Stable Bridge: 1.4.9
+Windows Rust Preview:  2.0.0-alpha.2
+Cloud Hana:            current deployed build
+Device Router:         2.0.0-alpha.2 (Rust)
 ```
 
 2026-07-17 实机验证已通过自动认领、WebSocket 文件写入/读回、Node 崩溃恢复和登录任务冷启动。真实整机重启复核待用户方便时执行。

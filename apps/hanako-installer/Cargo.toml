@@ -1,0 +1,33 @@
+[package]
+name = "hanako-bootstrap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "HanakoLocalBridge-Setup"
+path = "src/main.rs"
+
+[lib]
+name = "hanako_bootstrap"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+hanako-bridge-core = { path = "../../crates/hanako-bridge-core" }
+hanako-maintenance = { path = "../hanako-updater" }
+mslnk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile = "3"
+uuid.workspace = true
+winreg.workspace = true
+windows-sys.workspace = true
+
+[dev-dependencies]
+zip.workspace = true
+
+[build-dependencies]
+embed-resource = "3.0"

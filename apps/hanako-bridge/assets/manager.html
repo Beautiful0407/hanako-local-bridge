@@ -168,6 +168,20 @@
         <div class="actions" style="margin-top:18px"><button class="primary" type="submit">保存并重启</button></div>
         <div class="message" id="settings-message"></div>
       </form>
+      <div class="section">
+        <h2>在线更新</h2>
+        <dl class="kv">
+          <dt>当前版本</dt><dd id="update-current">-</dd>
+          <dt>最新版本</dt><dd id="update-latest">尚未检查</dd>
+          <dt>更新状态</dt><dd id="update-state">-</dd>
+          <dt>版本说明</dt><dd id="update-notes">-</dd>
+        </dl>
+        <div class="actions" style="margin-top:16px">
+          <button type="button" id="update-check">检查更新</button>
+          <button type="button" class="primary" id="update-install" disabled>立即安装</button>
+        </div>
+        <div class="message" id="update-message"></div>
+      </div>
     </section>
   </main>
 </div>
@@ -175,6 +189,7 @@
 const TOKEN = "__HANA_APPROVAL_TOKEN__";
 const headers = { "Content-Type": "application/json", "X-Approval-Token": TOKEN };
 let snapshot = null;
+let checkedUpdate = null;
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { ...headers, ...(options.headers || {}) } });
@@ -204,6 +219,10 @@ function render(data) {
   text("detail-cloud-url", data.cloud.cloudUrl);
   text("detail-config", data.configPath);
   text("detail-install", data.installRoot);
+  text("update-current", data.version);
+  const updateState = data.update?.state;
+  text("update-state", updateState?.status || "尚无更新记录");
+  if (updateState?.message) text("update-message", updateState.message);
   document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(item.code)}</td><td><span class="badge">${esc(item.status)}</span></td><td>${esc(item.detail)}</td></tr>`).join("");
   document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(root.mode)}</td><td>${esc(root.source)}</td></tr>`).join("");
   fillSettings(data.settings);
@@ -261,6 +280,39 @@ document.getElementById("refresh-button").onclick = refresh;
 document.getElementById("log-refresh").onclick = () => loadLogs().catch(error => text("log-content", error.message));
 document.getElementById("log-select").onchange = () => loadLogTail().catch(error => text("log-content", error.message));
 document.getElementById("add-root").onclick = () => addRootRow();
+document.getElementById("update-check").onclick = async () => {
+  const message = document.getElementById("update-message");
+  const install = document.getElementById("update-install");
+  try {
+    message.textContent = "正在检查签名更新清单...";
+    install.disabled = true;
+    checkedUpdate = await api("/api/manager/update/check");
+    text("update-latest", checkedUpdate.targetVersion);
+    text("update-notes", checkedUpdate.notes || "无");
+    install.disabled = !checkedUpdate.available;
+    message.textContent = checkedUpdate.available ? "发现新版本，可以安装。" : "当前已经是最新版本。";
+  } catch (error) {
+    checkedUpdate = null;
+    message.textContent = error.message;
+  }
+};
+document.getElementById("update-install").onclick = async () => {
+  if (!checkedUpdate?.available) return;
+  const message = document.getElementById("update-message");
+  const install = document.getElementById("update-install");
+  try {
+    install.disabled = true;
+    message.textContent = "正在启动 Rust 更新进程...";
+    await api("/api/manager/update/install", {
+      method: "POST",
+      body: JSON.stringify({ expectedVersion: checkedUpdate.targetVersion })
+    });
+    message.textContent = "更新进程已接管。管理器将自动关闭，完成后重新打开。";
+  } catch (error) {
+    install.disabled = false;
+    message.textContent = error.message;
+  }
+};
 document.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
   const message = document.getElementById("diagnostic-message");
   try {

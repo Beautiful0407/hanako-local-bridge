@@ -4,7 +4,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use base64::Engine;
@@ -470,7 +470,25 @@ async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
                 .pointer("/params/arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            call_tool(&state, name, &arguments).await
+            let started = Instant::now();
+            let result = call_tool(&state, name, &arguments).await;
+            let audit = match &result {
+                Ok(_) => json!({
+                    "kind": "mcp_tool_call",
+                    "tool": name,
+                    "ok": true,
+                    "durationMs": started.elapsed().as_millis()
+                }),
+                Err(error) => json!({
+                    "kind": "mcp_tool_call",
+                    "tool": name,
+                    "ok": false,
+                    "code": error.code(),
+                    "durationMs": started.elapsed().as_millis()
+                }),
+            };
+            state.audit_mcp(audit).await;
+            result
         }
         _ => {
             return Some(json!({

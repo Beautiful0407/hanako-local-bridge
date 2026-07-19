@@ -386,3 +386,110 @@ fn random_token(bytes: usize) -> BridgeResult<String> {
         .map_err(|error| anyhow::anyhow!("cannot generate secure random token: {error}"))?;
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures_util::{SinkExt, StreamExt};
+    use hanako_bridge_core::DeviceIdentity;
+    use std::env;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+    use uuid::Uuid;
+
+    fn device() -> DeviceIdentity {
+        DeviceIdentity {
+            schema_version: 1,
+            id: "cloud-test-device".to_string(),
+            name: "Cloud Test Device".to_string(),
+            hostname: "cloud-test-host".to_string(),
+            platform: "win32".to_string(),
+            updated_at: Utc::now().to_rfc3339(),
+        }
+    }
+
+    #[tokio::test]
+    async fn speaks_cloud_protocol_and_persists_approval() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let hello = socket.next().await.unwrap().unwrap();
+            let Message::Text(hello) = hello else {
+                panic!("cloud client did not send a text hello");
+            };
+            let hello: Value = serde_json::from_str(&hello).unwrap();
+            assert_eq!(hello["type"], "hello");
+            assert_eq!(hello["protocolVersion"], PROTOCOL_VERSION);
+            assert_eq!(hello["device"]["id"], "cloud-test-device");
+            assert!(!hello["publicKey"].as_str().unwrap().is_empty());
+            assert!(!hello["proof"]["nonce"].as_str().unwrap().is_empty());
+            assert!(!hello["proof"]["signature"].as_str().unwrap().is_empty());
+            assert!(!hello["claimToken"].as_str().unwrap().is_empty());
+
+            socket
+                .send(Message::Text(
+                    json!({"type": "hello_ack", "status": "active"})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            socket
+                .send(Message::Text(
+                    json!({"type": "approved", "credential": "credential-from-cloud"})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            socket
+                .send(Message::Text(json!({"type": "ping"}).to_string().into()))
+                .await
+                .unwrap();
+            let pong = socket.next().await.unwrap().unwrap();
+            let Message::Text(pong) = pong else {
+                panic!("cloud client did not answer ping");
+            };
+            let pong: Value = serde_json::from_str(&pong).unwrap();
+            assert_eq!(pong["type"], "pong");
+        });
+
+        let root = env::temp_dir().join(format!("hanako-cloud-test-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let connector = CloudConnector::new(
+            CloudConfig {
+                enabled: true,
+                url: format!("ws://127.0.0.1:{port}"),
+                reconnect_min_seconds: 2,
+                reconnect_max_seconds: 4,
+                heartbeat_seconds: 60,
+            },
+            root.join("data"),
+            device(),
+            "2.0.0-test",
+            Weak::new(),
+        )
+        .await
+        .unwrap();
+
+        let result = connector.connect_once().await;
+        assert!(
+            result.is_err(),
+            "closing the mock socket should end one session"
+        );
+        let identity: CloudIdentity = serde_json::from_slice(
+            &tokio::fs::read(root.join("data/cloud-identity.json"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(identity.credential, "credential-from-cloud");
+        assert!(identity.claim_token.is_empty());
+        let status = connector.client_identity().await;
+        assert_eq!(status["status"], "active");
+        server.await.unwrap();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+}

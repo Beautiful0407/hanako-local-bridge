@@ -156,7 +156,7 @@ fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> 
         std::process::id(),
         uuid::Uuid::new_v4().simple()
     ));
-    fs::write(&task_file, xml.as_bytes())?;
+    write_task_xml(&task_file, &xml)?;
     let result = run_schtasks([
         "/Create",
         "/TN",
@@ -310,8 +310,9 @@ fn task_xml(
     restart_delay_seconds: u64,
 ) -> String {
     let description = format!("Hanako Local Bridge Rust service: {task_name}");
+    let restart_minutes = restart_delay_seconds.saturating_add(59).max(60) / 60;
     format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+        r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Description>{}</Description>
@@ -348,7 +349,7 @@ fn task_xml(
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
     <RestartOnFailure>
-      <Interval>PT{}S</Interval>
+      <Interval>PT{}M</Interval>
       <Count>999</Count>
     </RestartOnFailure>
   </Settings>
@@ -364,7 +365,7 @@ fn task_xml(
         xml_escape(&description),
         xml_escape(user),
         xml_escape(user),
-        restart_delay_seconds.max(1),
+        restart_minutes,
         xml_escape(executable.to_string_lossy().as_ref()),
         xml_escape(
             executable
@@ -385,6 +386,16 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn write_task_xml(path: &Path, xml: &str) -> anyhow::Result<()> {
+    let mut bytes = Vec::with_capacity(xml.len() * 2 + 2);
+    bytes.extend_from_slice(&[0xFF, 0xFE]);
+    for unit in xml.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,8 +412,27 @@ mod tests {
         assert!(xml.contains("Hanako &amp; Bridge MCP"));
         assert!(xml.contains("hanako-bridge.exe"));
         assert!(xml.contains("--service"));
+        assert!(xml.contains("<Interval>PT1M</Interval>"));
         assert!(!xml.contains("powershell"));
         assert!(!xml.contains("wscript"));
         assert!(!xml.contains("node.exe"));
+    }
+
+    #[test]
+    fn task_xml_writer_emits_utf16_with_bom() {
+        let path = std::env::temp_dir().join(format!(
+            "hanako-task-xml-{}.xml",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let source = "<?xml version=\"1.0\" encoding=\"UTF-16\"?><Task/>";
+        write_task_xml(&path, source).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(&bytes[..2], &[0xFF, 0xFE]);
+        let units = bytes[2..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        assert_eq!(String::from_utf16(&units).unwrap(), source);
+        let _ = fs::remove_file(path);
     }
 }

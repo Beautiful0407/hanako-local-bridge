@@ -7,9 +7,10 @@ backups.
 ## Components
 
 ```text
-Windows Bridge: 1.4.1
-Cloud Hana:     0.401.11 or compatible
-Device Router:  0.8.1
+Windows stable bridge: 1.4.9
+Windows Rust preview:  2.0.0-alpha.2
+Cloud Hana:            current compatible deployment
+Device Router:         2.0.0-alpha.2 (Rust)
 ```
 
 The Windows bridge actively connects to the cloud:
@@ -79,14 +80,44 @@ The Hana web access key is never stored by the bridge.
 
 ## Cloud Services
 
-Deploy `cloud/device-router.cjs` to a root-owned application directory and use
-`cloud/hanako-local-device-router.service` as the systemd template.
+Build `hanako-device-router` for Linux x86-64, deploy it to a root-owned
+application directory, and use `cloud/hanako-local-device-router.service` as
+the systemd template.
 
 The router must only listen on:
 
 ```text
 127.0.0.1:18786
 ```
+
+Production layout:
+
+```text
+/opt/hanako-local-device-router/hanako-device-router
+/opt/hanako-local-device-router/devices.json
+/opt/hanako-local-device-router/tools-cache.json
+/opt/hanako-local-device-router/offline-queue.json
+/etc/systemd/system/hanako-local-device-router.service
+```
+
+Before replacing the Node router, create a root-only timestamped backup of the
+application directory and systemd unit. Stage the Rust binary as
+`hanako-device-router.new`, validate it with `file`, `ldd`, and `sha256sum`,
+then stop the old service and atomically rename the staged binary.
+
+After switching:
+
+```bash
+systemctl daemon-reload
+systemctl restart hanako-local-device-router
+systemctl is-active hanako-local-device-router
+curl -fsS http://127.0.0.1:18786/health
+```
+
+Rollback restores the saved Node unit and restarts the same service name. Keep
+`device-router.cjs`, `devices.json`, `tools-cache.json`, and
+`offline-queue.json` until the Rust deployment has completed its observation
+period.
 
 The cloud Hana process exposes:
 
@@ -139,9 +170,11 @@ Verify all layers:
 
 ```text
 Public update manifest and ZIP return HTTP 200 without GitHub authentication
-Windows /health reports version 1.4.1 and cloud.status=active
+Windows /health reports version 1.4.9 and cloud.status=active
 Cloud /api/local-bridge/devices reports the device online
-Router /health reports version 0.8.1 and the bridge online
+Router /health reports version 2.0.0-alpha.2, 34 tools, and all expected devices online
+local_device.devices succeeds through the router
+local_fs.roots succeeds with an explicit deviceId
 local_fs.read_text works through the router
 Stopping the Windows service makes the router report offline
 Starting the scheduled task restores active/online automatically

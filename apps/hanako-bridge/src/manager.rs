@@ -1,5 +1,7 @@
 use std::{
+    os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::Arc,
 };
 
@@ -25,6 +27,7 @@ use crate::{
 };
 
 const MANAGER_HTML: &str = include_str!("../assets/manager.html");
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -34,6 +37,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/manager/snapshot", get(snapshot))
         .route("/api/manager/action", post(action))
         .route("/api/manager/settings", post(save_settings))
+        .route("/api/manager/update/check", get(check_update))
+        .route("/api/manager/update/install", post(install_update))
         .route("/api/manager/logs", get(logs))
         .route("/api/manager/logs/{*path}", get(log_tail))
 }
@@ -112,7 +117,13 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             },
             "detail": state.runtime.config.cloud.url
         }),
+        json!({
+            "code": "maintenance",
+            "status": if maintenance_executable(&state.runtime.install_dir).is_file() { "pass" } else { "error" },
+            "detail": maintenance_executable(&state.runtime.install_dir)
+        }),
     ];
+    let update_state = read_json_value(&state.data_dir.join("update-state.json")).await;
     (
         StatusCode::OK,
         Json(json!({
@@ -132,6 +143,10 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
             },
             "cloud": state.cloud_identity().await,
             "service": service,
+            "update": {
+                "manifest": state.runtime.config.update.manifest,
+                "state": update_state
+            },
             "checks": checks,
             "settings": {
                 "deviceId": state.runtime.config.device.id,
@@ -171,6 +186,93 @@ async fn action(
         Ok(()) => (
             StatusCode::OK,
             Json(json!({ "ok": true, "action": input.action })),
+        ),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        ),
+    }
+}
+
+async fn check_update(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return forbidden();
+    }
+    let executable = maintenance_executable(&state.runtime.install_dir);
+    let install_root = state.runtime.install_dir.clone();
+    let manifest = state.runtime.config.update.manifest.clone();
+    match tokio::task::spawn_blocking(move || {
+        maintenance_json(
+            &executable,
+            &[
+                "check".into(),
+                "--install-root".into(),
+                install_root.into_os_string(),
+                "--manifest".into(),
+                manifest.into(),
+                "--current-version".into(),
+                env!("CARGO_PKG_VERSION").into(),
+            ],
+        )
+    })
+    .await
+    {
+        Ok(Ok(value)) => (StatusCode::OK, Json(value)),
+        Ok(Err(error)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        ),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallUpdateInput {
+    expected_version: String,
+}
+
+async fn install_update(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(input): Json<InstallUpdateInput>,
+) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return forbidden();
+    }
+    if hanako_bridge_core::update::parse_version(&input.expected_version).is_err() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "expectedVersion is invalid" })),
+        );
+    }
+    let executable = maintenance_executable(&state.runtime.install_dir);
+    let install_root = state.runtime.install_dir.clone();
+    let manifest = state.runtime.config.update.manifest.clone();
+    let expected_version = input.expected_version;
+    match tokio::task::spawn_blocking(move || {
+        maintenance_json(
+            &executable,
+            &[
+                "apply".into(),
+                "--install-root".into(),
+                install_root.into_os_string(),
+                "--manifest".into(),
+                manifest.into(),
+                "--expected-version".into(),
+                expected_version.into(),
+            ],
+        )
+    })
+    .await
+    {
+        Ok(Ok(value)) => (StatusCode::ACCEPTED, Json(value)),
+        Ok(Err(error)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": error.to_string() })),
         ),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -341,6 +443,41 @@ async fn read_tail(path: &Path, max_bytes: usize) -> String {
     };
     let start = bytes.len().saturating_sub(max_bytes);
     String::from_utf8_lossy(&bytes[start..]).into_owned()
+}
+
+async fn read_json_value(path: &Path) -> Value {
+    match tokio::fs::read(path).await {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        Err(_) => Value::Null,
+    }
+}
+
+fn maintenance_executable(install_root: &Path) -> PathBuf {
+    let installed = install_root.join("hanako-maintenance.exe");
+    if installed.is_file() {
+        return installed;
+    }
+    install_root.join("hanako-maintenance")
+}
+
+fn maintenance_json(executable: &Path, arguments: &[std::ffi::OsString]) -> anyhow::Result<Value> {
+    anyhow::ensure!(
+        executable.is_file(),
+        "Rust maintenance executable is missing: {}",
+        executable.display()
+    );
+    let output = Command::new(executable)
+        .args(arguments)
+        .stdin(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        anyhow::bail!("{}", if stderr.is_empty() { stdout } else { stderr });
+    }
+    serde_json::from_str(&stdout)
+        .map_err(|error| anyhow::anyhow!("maintenance returned invalid JSON: {error}: {stdout}"))
 }
 
 fn is_inside(path: &Path, root: &Path) -> bool {

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0-alpha.2 - 2026-07-19
+
+- Ported the signed updater, embedded Windows installer, and Linux multi-device router to Rust.
+- Added detached updater handoff with launcher-PID waiting so Windows can replace a running maintenance binary without an intermittent `os error 5`.
+- Added transactional payload replacement, stale managed-file cleanup, rollback, signed manifest compatibility, persistent update state, and preservation of configuration, data, logs, and unknown user files.
+- Added per-user shortcuts, uninstall registration, detached uninstall, UTF-16 Task Scheduler XML, and isolated install/overwrite/uninstall smoke coverage.
+- Added complete MCP audit events without sensitive arguments and active execution-job recovery across bridge restarts.
+- Added Rust cloud protocol, device-router, audit, recovery, installer, and Alpha 1-to-Alpha 2 update integration tests.
+- Rebuilt the signed `2.0.0-alpha.2` ZIP and embedded installer after the updater fix.
+- Deployed the Rust device router to the cloud host and verified 34 tools, two online Windows devices, real MCP calls, offline-queue compatibility, and the public Hana web entry.
+- Kept the installed Windows stable channel on `1.4.9`; Alpha 2 remains a separate prerelease until clean Windows 10/11 rollout validation is complete.
+
 ## 2.0.0-alpha.1 - 2026-07-19
 
 - Added a Rust workspace with shared configuration, device identity, path resolution, and crash-safe JSON storage.
