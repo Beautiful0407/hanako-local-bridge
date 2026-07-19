@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## Rust 2.0.0-alpha.7 预发布状态
+## Rust 2.0.0-alpha.8 预发布状态
 
-Rust Alpha 7 已经包含本地桥、托盘管理器、在线更新器和 Windows 安装器；云端路由器继续运行兼容的 Rust Alpha 2。Alpha 7 自动使用独立的 Alpha 更新清单，不会再把稳定版 `1.4.9` 误判成 Alpha 的最新版本；检查更新时如果管理服务短暂断线，会重试一次并显示中文提示。
+Rust Alpha 8 已经包含本地桥、托盘管理器、在线更新器和 Windows 安装器；云端路由器继续运行兼容的 Rust Alpha 2。后台 Bridge 使用 Windows GUI 子系统，启动服务后不会弹出黑色控制台窗口。关闭或退出管理器只关闭界面，MCP 后台任务仍会继续运行并由计划任务自动恢复。
 
 当前日常使用继续运行稳定版：
 
@@ -14,7 +14,7 @@ Rust Alpha 7 已经包含本地桥、托盘管理器、在线更新器和 Window
 不要手工复制 Rust EXE 到稳定目录。测试或覆盖修复时使用：
 
 ```text
-build\rust-release-alpha7\HanakoLocalBridge-Setup-2.0.0-alpha.7.exe
+build\rust-release-alpha8\HanakoLocalBridge-Setup-2.0.0-alpha.8.exe
 ```
 
 另一台已安装旧版的电脑可直接运行该安装器覆盖修复，不需要先卸载。迁移前仍建议至少备份：
@@ -25,7 +25,7 @@ data\
 logs\
 ```
 
-Alpha 7 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
+Alpha 8 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
 
 ## v1.4.1 安全连接与图形化管理器
 

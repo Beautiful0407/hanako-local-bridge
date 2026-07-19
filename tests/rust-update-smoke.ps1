@@ -5,9 +5,9 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $buildRoot = Join-Path $repo "build"
 $runId = [Guid]::NewGuid().ToString("N")
 $installRoot = Join-Path $buildRoot "rust-update-smoke-$runId"
-$installer = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-Setup-2.0.0-alpha.7.exe"
-$alpha6Package = Join-Path $buildRoot "rust-release-alpha6\HanakoLocalBridge-2.0.0-alpha.6-win-x64.zip"
-$alpha7Manifest = Join-Path $buildRoot "rust-release-alpha7\update-manifest.json"
+$installer = Join-Path $buildRoot "rust-release-alpha8\HanakoLocalBridge-Setup-2.0.0-alpha.8.exe"
+$alpha7Package = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-2.0.0-alpha.7-win-x64.zip"
+$alpha8Manifest = Join-Path $buildRoot "rust-release-alpha8\update-manifest.json"
 $currentMaintenance = Join-Path $repo "target\release\hanako-maintenance.exe"
 $passed = $false
 
@@ -30,25 +30,25 @@ function Invoke-GuiProcess([string]$FilePath, [string[]]$Arguments) {
 }
 
 try {
-  Assert-Path $installer "Rust Alpha 7 installer is missing."
-  Assert-Path $alpha6Package "Rust Alpha 6 payload is missing."
-  Assert-Path $alpha7Manifest "Rust Alpha 7 update manifest is missing."
+  Assert-Path $installer "Rust Alpha 8 installer is missing."
+  Assert-Path $alpha7Package "Rust Alpha 7 payload is missing."
+  Assert-Path $alpha8Manifest "Rust Alpha 8 update manifest is missing."
   Assert-Path $currentMaintenance "Current Rust maintenance binary is missing."
   New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
 
   $exitCode = Invoke-GuiProcess $installer @(
     "--payload",
-    $alpha6Package,
+    $alpha7Package,
     "--test-mode",
     "--install-root",
     $installRoot
   )
   if ($exitCode -ne 0) {
-    throw "Installing the Alpha 6 payload failed with exit code $exitCode."
+    throw "Installing the Alpha 7 payload failed with exit code $exitCode."
   }
-  $alpha6Payload = Get-Content -LiteralPath (Join-Path $installRoot "payload-manifest.json") -Raw | ConvertFrom-Json
-  if ($alpha6Payload.version -ne "2.0.0-alpha.6") {
-    throw "The update fixture was not installed at Alpha 6."
+  $alpha7Payload = Get-Content -LiteralPath (Join-Path $installRoot "payload-manifest.json") -Raw | ConvertFrom-Json
+  if ($alpha7Payload.version -ne "2.0.0-alpha.7") {
+    throw "The update fixture was not installed at Alpha 7."
   }
 
   # Exercise the current updater against an older installed payload.
@@ -57,10 +57,10 @@ try {
   Copy-Item -LiteralPath $currentMaintenance -Destination $maintenance -Force
   $currentMaintenanceHash = (Get-FileHash -LiteralPath $currentMaintenance -Algorithm SHA256).Hash
   if ((Get-FileHash -LiteralPath $maintenance -Algorithm SHA256).Hash -ne $currentMaintenanceHash) {
-    throw "The current maintenance binary was not injected into the Alpha 6 fixture."
+    throw "The current maintenance binary was not injected into the Alpha 7 fixture."
   }
   if ($oldMaintenanceHash -eq $currentMaintenanceHash) {
-    throw "The Alpha 6 fixture already contains the current maintenance binary."
+    throw "The Alpha 7 fixture already contains the current maintenance binary."
   }
 
   New-Item -ItemType Directory -Force -Path `
@@ -74,15 +74,15 @@ try {
 
   $output = & $maintenance apply `
     --install-root $installRoot `
-    --manifest $alpha7Manifest `
-    --expected-version "2.0.0-alpha.7" `
+    --manifest $alpha8Manifest `
+    --expected-version "2.0.0-alpha.8" `
     --test-mode
   if ($LASTEXITCODE -ne 0) {
-    throw "Alpha 6 maintenance launcher failed with exit code $LASTEXITCODE."
+    throw "Alpha 7 maintenance launcher failed with exit code $LASTEXITCODE."
   }
   $handoff = $output | ConvertFrom-Json
   if (-not $handoff.started) {
-    throw "Alpha 6 maintenance launcher did not confirm worker handoff."
+    throw "Alpha 7 maintenance launcher did not confirm worker handoff."
   }
 
   $statePath = [string]$handoff.statePath
@@ -103,15 +103,15 @@ try {
     Start-Sleep -Milliseconds 200
   }
   if (-not $state -or $state.status -ne "succeeded") {
-    throw "Alpha 6 to Alpha 7 update did not succeed at $statePath. Last read error: $lastStateError. State: $($state | ConvertTo-Json -Compress)"
+    throw "Alpha 7 to Alpha 8 update did not succeed at $statePath. Last read error: $lastStateError. State: $($state | ConvertTo-Json -Compress)"
   }
-  if ($state.installedVersion -ne "2.0.0-alpha.7") {
-    throw "Update state did not report Alpha 7."
+  if ($state.installedVersion -ne "2.0.0-alpha.8") {
+    throw "Update state did not report Alpha 8."
   }
 
   $payload = Get-Content -LiteralPath (Join-Path $installRoot "payload-manifest.json") -Raw | ConvertFrom-Json
-  if ($payload.version -ne "2.0.0-alpha.7") {
-    throw "Installed payload did not advance to Alpha 7."
+  if ($payload.version -ne "2.0.0-alpha.8") {
+    throw "Installed payload did not advance to Alpha 8."
   }
   $bridgeAfter = Get-FileHash -LiteralPath (Join-Path $installRoot "hanako-bridge.exe") -Algorithm SHA256
   if ($bridgeAfter.Hash -eq $bridgeBefore.Hash) {
@@ -129,7 +129,7 @@ try {
   }
 
   $passed = $true
-  Write-Output "Rust Alpha 6 to Alpha 7 update smoke test passed"
+  Write-Output "Rust Alpha 7 to Alpha 8 update smoke test passed"
 } finally {
   if ($passed -and (Test-Path -LiteralPath $installRoot)) {
     Remove-Item -LiteralPath $installRoot -Recurse -Force

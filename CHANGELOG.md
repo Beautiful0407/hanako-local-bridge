@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.8 - 2026-07-19
+
+- Builds the release `hanako-bridge.exe` as a Windows GUI subsystem executable so Task Scheduler can run it without allocating a visible console window.
+- Keeps debug builds as console applications for local diagnostics.
+- Preserves redirected JSON output for manager service commands after the subsystem change.
+- Adds a PE subsystem regression assertion to the installed-service smoke test.
+- Verifies closing the tray manager does not stop the independent background MCP bridge.
+- Advances signed update coverage from Alpha 7 to Alpha 8.
+
 ## 2.0.0-alpha.7 - 2026-07-19
 
 - Added a separate signed Alpha update feed under `/local-bridge/releases/alpha/` while leaving the stable `1.4.9` feed unchanged.

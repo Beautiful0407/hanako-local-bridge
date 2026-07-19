@@ -5,16 +5,17 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $buildRoot = Join-Path $repo "build"
 $runId = [Guid]::NewGuid().ToString("N")
 $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
+$installRoot = Join-Path $testRoot "install"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-Setup-2.0.0-alpha.7.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha7\HanakoLocalBridge-2.0.0-alpha.7-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke"
-$taskName = "Hanako Rust Alpha7 Smoke MCP"
-$actionTaskName = "Hanako Rust Alpha7 Smoke Manager Action"
+$installer = Join-Path $buildRoot "rust-release-alpha8\HanakoLocalBridge-Setup-2.0.0-alpha.8.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha8\HanakoLocalBridge-2.0.0-alpha.8-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke"
+$taskName = "Hanako Rust Alpha8 Smoke MCP"
+$actionTaskName = "Hanako Rust Alpha8 Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
-$legacyServer = Join-Path $testRoot "legacy-server.cjs"
-$legacyLauncher = Join-Path $testRoot "run-legacy-hidden.vbs"
+$legacyServer = Join-Path $installRoot "legacy-server.cjs"
+$legacyLauncher = Join-Path $installRoot "run-legacy-hidden.vbs"
 $legacyTaskXml = Join-Path $buildRoot "rust-installer-legacy-$runId.xml"
 $oldUserProfile = $env:USERPROFILE
 $oldAppData = $env:APPDATA
@@ -27,6 +28,12 @@ function Assert-Path([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
     throw $Message
   }
+}
+
+function Get-PeSubsystem([string]$Path) {
+  $bytes = [IO.File]::ReadAllBytes($Path)
+  $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+  return [BitConverter]::ToUInt16($bytes, $peOffset + 24 + 68)
 }
 
 function Set-Stage([string]$Value) {
@@ -62,10 +69,10 @@ function Test-BridgeHealth {
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.7" -and
+      $health.version -eq "2.0.0-alpha.8" -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.7"
+      $approvalHealth.version -eq "2.0.0-alpha.8"
     )
   } catch {
     return $false
@@ -164,7 +171,7 @@ http.createServer((request, response) => {
     <Exec>
       <Command>$wscript</Command>
       <Arguments>//B //NoLogo "$legacyLauncher"</Arguments>
-      <WorkingDirectory>$testRoot</WorkingDirectory>
+      <WorkingDirectory>$installRoot</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
@@ -240,10 +247,10 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 7 installer is missing."
-  Assert-Path $payload "Rust Alpha 7 payload is missing."
+  Assert-Path $installer "Rust Alpha 8 installer is missing."
+  Assert-Path $payload "Rust Alpha 8 payload is missing."
 
-  New-Item -ItemType Directory -Force -Path $profileRoot, $appDataRoot | Out-Null
+  New-Item -ItemType Directory -Force -Path $installRoot, $profileRoot, $appDataRoot | Out-Null
 
   $root = Join-Path $testRoot "files"
   $data = Join-Path $testRoot "data"
@@ -281,7 +288,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha7 Smoke"
+      taskPrefix = "Hanako Rust Alpha8 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -294,7 +301,7 @@ try {
   }
   $configJson = $config | ConvertTo-Json -Depth 10
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-  [System.IO.File]::WriteAllText((Join-Path $testRoot "config.json"), $configJson, $utf8NoBom)
+  [System.IO.File]::WriteAllText((Join-Path $installRoot "config.json"), $configJson, $utf8NoBom)
   Set-Content -LiteralPath (Join-Path $data "preinstall.txt") -Value "preserve-me" -Encoding utf8
   Set-Content -LiteralPath (Join-Path $logs "preinstall.log") -Value "preserve-log" -Encoding utf8
 
@@ -312,13 +319,16 @@ try {
 
   $stage = "first install"
   Set-Stage $stage
-  $exitCode = Invoke-Installer @("--install-root", $testRoot)
+  $exitCode = Invoke-Installer @("--install-root", $installRoot)
   if ($exitCode -ne 0) {
     throw "Rust installer first install failed with exit code $exitCode."
   }
-  Assert-Path (Join-Path $testRoot "hanako-bridge.exe") "Bridge was not installed."
-  Assert-Path (Join-Path $testRoot "hanako-manager.exe") "Manager was not installed."
-  Assert-Path (Join-Path $testRoot "hanako-maintenance.exe") "Maintenance was not installed."
+  Assert-Path (Join-Path $installRoot "hanako-bridge.exe") "Bridge was not installed."
+  Assert-Path (Join-Path $installRoot "hanako-manager.exe") "Manager was not installed."
+  Assert-Path (Join-Path $installRoot "hanako-maintenance.exe") "Maintenance was not installed."
+  if ((Get-PeSubsystem (Join-Path $installRoot "hanako-bridge.exe")) -ne 2) {
+    throw "Release bridge is not a Windows GUI subsystem executable and will open a console window."
+  }
   try {
     Wait-Until { Test-BridgeHealth } "Rust bridge did not become healthy after first install."
   } catch {
@@ -329,7 +339,7 @@ try {
   Assert-Path (Join-Path $profileRoot "Desktop\Hanako Local Bridge.lnk") "Desktop shortcut was not created."
   Set-Stage "first install assertions passed"
   Assert-Path (Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk") "Start menu shortcut was not created."
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -346,7 +356,7 @@ try {
   Set-Stage $stage
   Set-Content -LiteralPath (Join-Path $data "overwrite-marker.txt") -Value "keep-data" -Encoding utf8
   Set-Content -LiteralPath (Join-Path $logs "overwrite-marker.log") -Value "keep-log" -Encoding utf8
-  $exitCode = Invoke-Installer @("--install-root", $testRoot)
+  $exitCode = Invoke-Installer @("--install-root", $installRoot)
   if ($exitCode -ne 0) {
     throw "Rust installer overwrite failed with exit code $exitCode."
   }
@@ -360,7 +370,7 @@ try {
 
   $stage = "manager single instance"
   Set-Stage $stage
-  $managerPath = Join-Path $testRoot "hanako-manager.exe"
+  $managerPath = Join-Path $installRoot "hanako-manager.exe"
   $managerProcess = Start-Process -FilePath $managerPath -PassThru -WindowStyle Minimized
   Wait-Until {
     -not $managerProcess.HasExited -and @(Get-InstalledManagerProcesses $managerPath).Count -eq 1
@@ -376,16 +386,17 @@ try {
   Stop-Process -Id $managerProcess.Id -Force
   $managerProcess.WaitForExit()
   $managerProcess = $null
+  Wait-Until { Test-BridgeHealth } "Closing the manager stopped the background bridge service."
 
   $stage = "uninstall"
   Set-Stage $stage
-  $exitCode = Invoke-Installer @("--uninstall", "--install-root", $testRoot)
+  $exitCode = Invoke-Installer @("--uninstall", "--install-root", $installRoot)
   if ($exitCode -ne 0) {
     throw "Rust uninstall launch failed with exit code $exitCode."
   }
-  Wait-Until { -not (Test-Path -LiteralPath $testRoot) } "Rust uninstall worker did not remove the test installation."
+  Wait-Until { -not (Test-Path -LiteralPath $installRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -405,10 +416,10 @@ try {
   Stop-LegacyFixtureProcesses
   if ($passed) {
     if (Test-Path -LiteralPath $testRoot) {
-      Remove-Item -LiteralPath $testRoot -Recurse -Force
+      Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha7Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha8Smoke" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData
