@@ -1,9 +1,10 @@
 use std::{
     env, fs,
+    net::{Ipv4Addr, TcpListener},
     os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use hanako_bridge_core::RuntimeConfig;
@@ -144,6 +145,14 @@ pub async fn service_status(
 fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> {
     let executable = env::current_exe()?;
     let user = current_user()?;
+    let _ = stop_task(task_name);
+    wait_for_ports_released(
+        &[
+            runtime.config.filesystem.port,
+            runtime.config.filesystem.approval_port,
+        ],
+        Duration::from_secs(8),
+    )?;
     let xml = task_xml(
         task_name,
         &user,
@@ -170,6 +179,34 @@ fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> 
     let legacy_tunnel = format!("{} Tunnel", runtime.config.service.task_prefix.trim());
     let _ = delete_task(&legacy_tunnel);
     Ok(())
+}
+
+fn wait_for_ports_released(ports: &[u16], timeout: Duration) -> anyhow::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let mut listeners = Vec::with_capacity(ports.len());
+        let mut blocked_port = None;
+        for port in ports {
+            match TcpListener::bind((Ipv4Addr::LOCALHOST, *port)) {
+                Ok(listener) => listeners.push(listener),
+                Err(_) => {
+                    blocked_port = Some(*port);
+                    break;
+                }
+            }
+        }
+        drop(listeners);
+        if blocked_port.is_none() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!(
+                "timed out waiting for local port {} to be released",
+                blocked_port.unwrap_or_default()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn start_task(task_name: &str) -> anyhow::Result<()> {
@@ -399,6 +436,7 @@ fn write_task_xml(path: &Path, xml: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
 
     #[test]
     fn task_xml_escapes_paths_and_runs_the_rust_service_directly() {
@@ -434,5 +472,18 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(String::from_utf16(&units).unwrap(), source);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn waits_for_legacy_service_ports_before_starting_replacement() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            drop(listener);
+        });
+        let started = Instant::now();
+        wait_for_ports_released(&[port], Duration::from_secs(2)).unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(150));
     }
 }

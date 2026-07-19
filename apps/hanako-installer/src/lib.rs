@@ -1,6 +1,8 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    thread,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, ensure};
@@ -101,9 +103,21 @@ pub fn uninstall_installation(install_root: &Path) -> anyhow::Result<()> {
     }
     remove_shell_integration()?;
     if install_root.is_dir() {
-        fs::remove_dir_all(&install_root)?;
+        remove_dir_all_with_retry(&install_root, Duration::from_secs(15))?;
     }
     Ok(())
+}
+
+fn remove_dir_all_with_retry(path: &Path, timeout: Duration) -> anyhow::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) if Instant::now() >= deadline => return Err(error.into()),
+            Err(_) => thread::sleep(Duration::from_millis(250)),
+        }
+    }
 }
 
 pub fn write_embedded_package(bytes: &[u8]) -> anyhow::Result<(TempDir, PathBuf)> {

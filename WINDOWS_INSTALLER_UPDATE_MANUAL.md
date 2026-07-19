@@ -2,7 +2,7 @@
 
 稳定版本：`1.4.9`
 
-Rust 预发布版本：`2.0.0-alpha.2`
+Rust 预发布版本：`2.0.0-alpha.3`
 
 日期：`2026-07-19`
 
@@ -10,32 +10,37 @@ Rust 预发布版本：`2.0.0-alpha.2`
 
 ```text
 稳定渠道：1.4.9，继续用于现有 Windows 电脑
-Alpha 渠道：2.0.0-alpha.2，包含纯 Rust Bridge、Manager、Updater 和 Installer
+Alpha 渠道：2.0.0-alpha.3，包含纯 Rust Bridge、Manager、Updater 和 Installer
 云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
 ```
 
-不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。Alpha 测试应使用独立安装目录，正式迁移必须使用内嵌安装器或签名更新清单。
+不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。首次安装或覆盖修复必须使用内嵌安装器或签名更新清单。
 
-Alpha 2 发布文件：
+Alpha 3 发布文件：
 
 ```text
-build\rust-release-alpha2\HanakoLocalBridge-Setup-2.0.0-alpha.2.exe
-build\rust-release-alpha2\HanakoLocalBridge-2.0.0-alpha.2-win-x64.zip
-build\rust-release-alpha2\update-manifest.json
+build\rust-release-alpha3\HanakoLocalBridge-Setup-2.0.0-alpha.3.exe
+build\rust-release-alpha3\HanakoLocalBridge-2.0.0-alpha.3-win-x64.zip
+build\rust-release-alpha3\update-manifest.json
 ```
 
-Alpha 2 已验证：
+Alpha 3 已验证：
 
 ```text
 首次安装
+旧 Node 服务占用审批端口时自动停止并接管
 同目录覆盖安装
 桌面和开始菜单快捷方式
 计划任务启动与恢复
+重复点击快捷方式只保留一个管理器窗口
 卸载注册和后台卸载
-Alpha 1 负载升级到 Alpha 2
+WebView2 退出延迟时重试清理安装目录
+Alpha 2 负载升级到 Alpha 3
 配置、data、logs 和未知用户文件保留
 签名、SHA256、大小校验和失败回滚
 ```
+
+另一台已安装 Alpha 2 或仍残留旧 Node 服务的电脑不需要先卸载。关闭正在使用的管理器窗口后，直接双击 `HanakoLocalBridge-Setup-2.0.0-alpha.3.exe` 覆盖安装即可。安装器会停止旧计划任务、等待本地端口释放、安装 Rust 服务并保留现有配置与数据。
 
 ## 1. 目标
 

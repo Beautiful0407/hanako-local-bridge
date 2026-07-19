@@ -2,13 +2,20 @@
 
 use std::{
     env,
+    io::{Read as _, Write as _},
+    net::{Ipv4Addr, SocketAddrV4, TcpStream, UdpSocket},
     os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use hanako_bridge_core::RuntimeConfig;
 use tray_icon::{
     TrayIcon, TrayIconBuilder, TrayIconEvent,
@@ -24,9 +31,89 @@ use winit::{
 use wry::{WebView, WebViewBuilder};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const ACTIVATION_REQUEST: &[u8] = b"HANAKO_LOCAL_BRIDGE_MANAGER_SHOW_V1";
+const ACTIVATION_ACK: &[u8] = b"HANAKO_LOCAL_BRIDGE_MANAGER_ACK_V1";
+const ACTIVATION_PORT_BASE: u16 = 42_000;
+const ACTIVATION_PORT_SPAN: u16 = 2_000;
+
+enum ActivationRole {
+    Primary(ManagerActivation),
+    ActivatedExisting,
+}
+
+struct ManagerActivation {
+    requested: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl ManagerActivation {
+    fn acquire(install_dir: &Path) -> anyhow::Result<ActivationRole> {
+        let address = activation_address(install_dir);
+        match UdpSocket::bind(address) {
+            Ok(socket) => {
+                socket.set_read_timeout(Some(Duration::from_millis(200)))?;
+                let requested = Arc::new(AtomicBool::new(false));
+                let stop = Arc::new(AtomicBool::new(false));
+                let worker_requested = Arc::clone(&requested);
+                let worker_stop = Arc::clone(&stop);
+                let worker = thread::spawn(move || {
+                    let mut buffer = [0u8; 128];
+                    while !worker_stop.load(Ordering::Relaxed) {
+                        match socket.recv_from(&mut buffer) {
+                            Ok((length, peer)) if &buffer[..length] == ACTIVATION_REQUEST => {
+                                worker_requested.store(true, Ordering::Release);
+                                let _ = socket.send_to(ACTIVATION_ACK, peer);
+                            }
+                            Ok(_) => {}
+                            Err(error)
+                                if matches!(
+                                    error.kind(),
+                                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                                ) => {}
+                            Err(_) => break,
+                        }
+                    }
+                });
+                Ok(ActivationRole::Primary(Self {
+                    requested,
+                    stop,
+                    worker: Some(worker),
+                }))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
+                socket.set_read_timeout(Some(Duration::from_secs(2)))?;
+                socket.send_to(ACTIVATION_REQUEST, address)?;
+                let mut buffer = [0u8; 128];
+                let (length, peer) = socket.recv_from(&mut buffer)?;
+                ensure!(
+                    peer == address.into() && &buffer[..length] == ACTIVATION_ACK,
+                    "existing manager did not acknowledge activation"
+                );
+                Ok(ActivationRole::ActivatedExisting)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn take_request(&self) -> bool {
+        self.requested.swap(false, Ordering::AcqRel)
+    }
+}
+
+impl Drop for ManagerActivation {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
+    }
+}
 
 struct ManagerApp {
     url: String,
+    activation: ManagerActivation,
     window: Option<Window>,
     webview: Option<WebView>,
     tray: Option<TrayIcon>,
@@ -36,11 +123,12 @@ struct ManagerApp {
 }
 
 impl ManagerApp {
-    fn new(url: String) -> anyhow::Result<Self> {
+    fn new(url: String, activation: ManagerActivation) -> anyhow::Result<Self> {
         let open_item = MenuItem::new("打开管理器", true, None);
         let exit_item = MenuItem::new("退出管理器", true, None);
         Ok(Self {
             url,
+            activation,
             window: None,
             webview: None,
             tray: None,
@@ -146,6 +234,9 @@ impl ApplicationHandler for ManagerApp {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.activation.take_request() {
+            self.show();
+        }
         self.process_tray_events(event_loop);
         event_loop.set_control_flow(ControlFlow::WaitUntil(
             Instant::now() + Duration::from_millis(200),
@@ -164,7 +255,16 @@ fn main() -> anyhow::Result<()> {
         anyhow::ensure!(bridge_exe.is_file(), "Rust bridge executable is missing");
         return Ok(());
     }
-    ensure_service(&bridge_exe, runtime.config.filesystem.approval_port);
+    let activation = match ManagerActivation::acquire(&install_dir)? {
+        ActivationRole::Primary(activation) => activation,
+        ActivationRole::ActivatedExisting => return Ok(()),
+    };
+    if let Err(error) = ensure_service(&bridge_exe, runtime.config.filesystem.approval_port) {
+        show_error(&format!(
+            "无法连接当前 Rust 服务：{error}\n\n请重新运行安装器执行覆盖修复。"
+        ));
+        return Ok(());
+    }
     let url = env::args()
         .skip_while(|argument| argument != "--url")
         .nth(1)
@@ -176,7 +276,7 @@ fn main() -> anyhow::Result<()> {
         });
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Wait);
-    let mut app = ManagerApp::new(url)?;
+    let mut app = ManagerApp::new(url, activation)?;
     event_loop.run_app(&mut app)?;
     Ok(())
 }
@@ -189,9 +289,9 @@ fn sibling_bridge(install_dir: &Path) -> PathBuf {
     install_dir.join("hanako-bridge")
 }
 
-fn ensure_service(bridge_exe: &Path, port: u16) {
+fn ensure_service(bridge_exe: &Path, port: u16) -> anyhow::Result<()> {
     if health_ok(port) {
-        return;
+        return Ok(());
     }
     for action in ["start", "repair"] {
         let _ = Command::new(bridge_exe)
@@ -204,21 +304,60 @@ fn ensure_service(bridge_exe: &Path, port: u16) {
         let deadline = Instant::now() + Duration::from_secs(8);
         while Instant::now() < deadline {
             if health_ok(port) {
-                return;
+                return Ok(());
             }
             std::thread::sleep(Duration::from_millis(250));
         }
     }
+    anyhow::bail!(
+        "端口 {port} 上没有运行 Hanako Rust {} 服务，可能仍被旧版服务占用",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 fn health_ok(port: u16) -> bool {
-    std::net::TcpStream::connect_timeout(
-        &format!("127.0.0.1:{port}")
-            .parse()
-            .expect("valid loopback address"),
-        Duration::from_millis(350),
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+    let Ok(mut stream) = TcpStream::connect_timeout(&address.into(), Duration::from_millis(500))
+    else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    let request =
+        format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut response = Vec::new();
+    if stream.read_to_end(&mut response).is_err() {
+        return false;
+    }
+    let Some(body_offset) = response.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&response[body_offset + 4..])
+    else {
+        return false;
+    };
+    value["ok"] == true
+        && value["runtime"] == "rust"
+        && value["version"] == env!("CARGO_PKG_VERSION")
+}
+
+fn activation_address(install_dir: &Path) -> SocketAddrV4 {
+    let normalized = install_dir
+        .to_string_lossy()
+        .replace('/', "\\")
+        .to_ascii_lowercase();
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for byte in normalized.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    SocketAddrV4::new(
+        Ipv4Addr::LOCALHOST,
+        ACTIVATION_PORT_BASE + (hash % u64::from(ACTIVATION_PORT_SPAN)) as u16,
     )
-    .is_ok()
 }
 
 fn app_icon_rgba(size: u32) -> Vec<u8> {
@@ -253,4 +392,75 @@ fn show_error(message: &str) {
         ))
         .creation_flags(CREATE_NO_WINDOW)
         .status();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn serve_health(body: String) -> u16 {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 512];
+            let _ = stream.read(&mut request);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+        });
+        port
+    }
+
+    #[test]
+    fn rejects_legacy_health_response_without_rust_identity() {
+        let port =
+            serve_health(r#"{"ok":true,"trustMode":"full","approvalRequired":false}"#.to_string());
+        assert!(!health_ok(port));
+    }
+
+    #[test]
+    fn accepts_matching_rust_health_response() {
+        let body = serde_json::json!({
+            "ok": true,
+            "runtime": "rust",
+            "version": env!("CARGO_PKG_VERSION")
+        })
+        .to_string();
+        let port = serve_health(body);
+        assert!(health_ok(port));
+    }
+
+    #[test]
+    fn second_instance_activates_the_primary_manager() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let install_dir = env::temp_dir().join(format!(
+            "hanako-manager-instance-{}-{unique}",
+            std::process::id()
+        ));
+        let primary = match ManagerActivation::acquire(&install_dir).unwrap() {
+            ActivationRole::Primary(primary) => primary,
+            ActivationRole::ActivatedExisting => panic!("test manager unexpectedly already exists"),
+        };
+        assert!(matches!(
+            ManagerActivation::acquire(&install_dir).unwrap(),
+            ActivationRole::ActivatedExisting
+        ));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if primary.take_request() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        panic!("primary manager did not receive the activation request");
+    }
 }

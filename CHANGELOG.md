@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0-alpha.3 - 2026-07-19
+
+- Fixed the Rust manager accepting any listener on the configured approval port, which could open the legacy Node manager endpoint and display `{"error":"invalid approval token"}`.
+- Added explicit Rust runtime and exact-version identity checks before the manager opens its WebView.
+- Added per-installation manager single-instance activation so repeated shortcut clicks restore the existing window instead of opening duplicate windows.
+- Changed scheduled-task repair to stop the previous task and wait for both local ports to be released before starting the Rust replacement.
+- Added bounded uninstall retries so short-lived WebView2 file handles do not leave a partially removed installation.
+- Added regression coverage for legacy-service takeover, overwrite data preservation, installed-manager multiple launch, uninstall after WebView2 startup, and signed Alpha 2-to-Alpha 3 update.
+- Rebuilt the signed Alpha 3 ZIP, manifest, and embedded Windows installer. The cloud Linux device router remains on compatible Rust Alpha 2.
+
 ## 2.0.0-alpha.2 - 2026-07-19
 
 - Ported the signed updater, embedded Windows installer, and Linux multi-device router to Rust.

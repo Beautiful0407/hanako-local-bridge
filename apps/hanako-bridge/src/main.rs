@@ -125,6 +125,8 @@ async fn approval_health(State(state): State<Arc<AppState>>) -> impl IntoRespons
         StatusCode::OK,
         axum::Json(json!({
             "ok": true,
+            "version": VERSION,
+            "runtime": "rust",
             "trustMode": if state.full_trust { "full" } else { "approval" },
             "approvalRequired": !state.full_trust,
             "pending": pending,

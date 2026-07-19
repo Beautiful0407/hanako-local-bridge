@@ -7,17 +7,19 @@ $runId = [Guid]::NewGuid().ToString("N")
 $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha2\HanakoLocalBridge-Setup-2.0.0-alpha.2.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha2\HanakoLocalBridge-2.0.0-alpha.2-win-x64.zip"
-$registryPath = "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha2Smoke"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha2Smoke"
-$taskName = "Hanako Rust Alpha2 Smoke MCP"
+$installer = Join-Path $buildRoot "rust-release-alpha3\HanakoLocalBridge-Setup-2.0.0-alpha.3.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha3\HanakoLocalBridge-2.0.0-alpha.3-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha3Smoke"
+$taskName = "Hanako Rust Alpha3 Smoke MCP"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
+$legacyServer = Join-Path $buildRoot "rust-installer-legacy-$runId.cjs"
+$legacyTaskXml = Join-Path $buildRoot "rust-installer-legacy-$runId.xml"
 $oldUserProfile = $env:USERPROFILE
 $oldAppData = $env:APPDATA
 $oldLocalAppData = $env:LOCALAPPDATA
 $passed = $false
 $stage = "initialization"
+$managerProcess = $null
 
 function Assert-Path([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -50,9 +52,133 @@ function Test-TaskExists {
 function Test-BridgeHealth {
   try {
     $health = Invoke-RestMethod "http://127.0.0.1:38887/health"
-    return $health.ok -eq $true -and $health.version -eq "2.0.0-alpha.2"
+    $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
+    return (
+      $health.ok -eq $true -and
+      $health.version -eq "2.0.0-alpha.3" -and
+      $approvalHealth.ok -eq $true -and
+      $approvalHealth.runtime -eq "rust" -and
+      $approvalHealth.version -eq "2.0.0-alpha.3"
+    )
   } catch {
     return $false
+  }
+}
+
+function Test-LegacyApprovalServer {
+  try {
+    $health = Invoke-RestMethod "http://127.0.0.1:38888/health"
+    if ($health.ok -ne $true -or $health.PSObject.Properties.Name -contains "runtime") {
+      return $false
+    }
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+      $client.Connect("127.0.0.1", 38888)
+      $stream = $client.GetStream()
+      $request = [System.Text.Encoding]::ASCII.GetBytes(
+        "GET /manager/ HTTP/1.1`r`nHost: 127.0.0.1:38888`r`nConnection: close`r`n`r`n"
+      )
+      $stream.Write($request, 0, $request.Length)
+      $reader = New-Object System.IO.StreamReader($stream)
+      $response = $reader.ReadToEnd()
+      return $response -match "HTTP/1.1 403" -and $response -match "invalid approval token"
+    } finally {
+      $client.Dispose()
+    }
+  } catch {
+    return $false
+  }
+}
+
+function Start-LegacyTask {
+  & cmd.exe /d /c "schtasks.exe /End /TN `"$taskName`" >nul 2>&1"
+  & cmd.exe /d /c "schtasks.exe /Delete /TN `"$taskName`" /F >nul 2>&1"
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  @'
+const http = require("http");
+http.createServer((request, response) => {
+  response.setHeader("content-type", "application/json");
+  if (request.url === "/health") {
+    response.end(JSON.stringify({ ok: true, trustMode: "full", approvalRequired: false }));
+    return;
+  }
+  response.statusCode = 403;
+  response.end(JSON.stringify({ error: "invalid approval token" }));
+}).listen(38888, "127.0.0.1");
+'@ | Set-Content -LiteralPath $legacyServer -Encoding utf8
+
+  $user = (& whoami.exe).Trim()
+  $xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger><Enabled>true</Enabled><UserId>$user</UserId></LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>$user</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$node</Command>
+      <Arguments>"$legacyServer"</Arguments>
+      <WorkingDirectory>$buildRoot</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"@
+  $encoding = [System.Text.Encoding]::Unicode
+  [System.IO.File]::WriteAllText($legacyTaskXml, $xml, $encoding)
+  & schtasks.exe /Create /TN $taskName /XML $legacyTaskXml /F | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not create the legacy scheduled task fixture."
+  }
+  & schtasks.exe /Run /TN $taskName | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Could not start the legacy scheduled task fixture."
+  }
+}
+
+function Get-InstalledManagerProcesses([string]$ManagerPath) {
+  return @(
+    Get-Process -Name "hanako-manager" -ErrorAction SilentlyContinue | Where-Object {
+      try {
+        [string]::Equals($_.Path, $ManagerPath, [System.StringComparison]::OrdinalIgnoreCase)
+      } catch {
+        $false
+      }
+    }
+  )
+}
+
+function Get-ServiceDiagnostics {
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  $taskInfo = Get-ScheduledTaskInfo -TaskName $taskName -ErrorAction SilentlyContinue
+  $connections = @(
+    Get-NetTCPConnection -LocalPort 38887, 38888 -ErrorAction SilentlyContinue |
+      Select-Object LocalAddress, LocalPort, State, OwningProcess
+  )
+  $owners = @(
+    $connections |
+      Where-Object OwningProcess -gt 0 |
+      ForEach-Object { Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue } |
+      Select-Object Id, ProcessName, Path
+  )
+  return [ordered]@{
+    taskState = if ($task) { [string]$task.State } else { "missing" }
+    lastTaskResult = if ($taskInfo) { $taskInfo.LastTaskResult } else { $null }
+    connections = $connections
+    owners = $owners
   }
 }
 
@@ -71,8 +197,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 2 installer is missing."
-  Assert-Path $payload "Rust Alpha 2 payload is missing."
+  Assert-Path $installer "Rust Alpha 3 installer is missing."
+  Assert-Path $payload "Rust Alpha 3 payload is missing."
 
   New-Item -ItemType Directory -Force -Path $profileRoot, $appDataRoot | Out-Null
 
@@ -112,7 +238,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha2 Smoke"
+      taskPrefix = "Hanako Rust Alpha3 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -136,6 +262,11 @@ try {
   $env:HANA_INSTALLER_SKIP_MANAGER = "1"
   New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
 
+  $stage = "legacy service fixture"
+  Set-Stage $stage
+  Start-LegacyTask
+  Wait-Until { Test-LegacyApprovalServer } "Legacy approval server did not reproduce invalid approval token."
+
   $stage = "first install"
   Set-Stage $stage
   $exitCode = Invoke-Installer @("--install-root", $testRoot)
@@ -145,12 +276,17 @@ try {
   Assert-Path (Join-Path $testRoot "hanako-bridge.exe") "Bridge was not installed."
   Assert-Path (Join-Path $testRoot "hanako-manager.exe") "Manager was not installed."
   Assert-Path (Join-Path $testRoot "hanako-maintenance.exe") "Maintenance was not installed."
-  Wait-Until { Test-BridgeHealth } "Rust bridge did not become healthy after first install."
+  try {
+    Wait-Until { Test-BridgeHealth } "Rust bridge did not become healthy after first install."
+  } catch {
+    $diagnostics = Get-ServiceDiagnostics | ConvertTo-Json -Depth 6 -Compress
+    throw "$($_.Exception.Message) Diagnostics: $diagnostics"
+  }
   Wait-Until { Test-TaskExists } "Rust scheduled task was not installed."
   Assert-Path (Join-Path $profileRoot "Desktop\Hanako Local Bridge.lnk") "Desktop shortcut was not created."
   Set-Stage "first install assertions passed"
   Assert-Path (Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk") "Start menu shortcut was not created."
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha2Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha3Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -170,6 +306,25 @@ try {
     throw "Overwrite install did not preserve logs."
   }
 
+  $stage = "manager single instance"
+  Set-Stage $stage
+  $managerPath = Join-Path $testRoot "hanako-manager.exe"
+  $managerProcess = Start-Process -FilePath $managerPath -PassThru -WindowStyle Minimized
+  Wait-Until {
+    -not $managerProcess.HasExited -and @(Get-InstalledManagerProcesses $managerPath).Count -eq 1
+  } "The first installed manager did not remain running."
+  $secondManager = Start-Process -FilePath $managerPath -Wait -PassThru -WindowStyle Minimized
+  if ($secondManager.ExitCode -ne 0) {
+    throw "The second manager launch exited with code $($secondManager.ExitCode)."
+  }
+  Start-Sleep -Milliseconds 500
+  if (@(Get-InstalledManagerProcesses $managerPath).Count -ne 1) {
+    throw "Repeated manager launches created more than one installed manager process."
+  }
+  Stop-Process -Id $managerProcess.Id -Force
+  $managerProcess.WaitForExit()
+  $managerProcess = $null
+
   $stage = "uninstall"
   Set-Stage $stage
   $exitCode = Invoke-Installer @("--uninstall", "--install-root", $testRoot)
@@ -178,7 +333,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $testRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha2Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha3Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -188,12 +343,18 @@ try {
   Write-Error "Rust installer smoke test failed during $stage`: $($_.Exception.Message)"
   throw
 } finally {
+  if ($managerProcess -and -not $managerProcess.HasExited) {
+    Stop-Process -Id $managerProcess.Id -Force -ErrorAction SilentlyContinue
+  }
+  & cmd.exe /d /c "schtasks.exe /End /TN `"$taskName`" >nul 2>&1"
+  & cmd.exe /d /c "schtasks.exe /Delete /TN `"$taskName`" /F >nul 2>&1"
   if ($passed) {
     if (Test-Path -LiteralPath $testRoot) {
       Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha2Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha3Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $legacyServer, $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData
   $env:LOCALAPPDATA = $oldLocalAppData

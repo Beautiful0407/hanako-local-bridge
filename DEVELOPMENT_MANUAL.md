@@ -22,7 +22,7 @@ tests/rust-update-smoke.ps1
 
 `hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面；`hanako-maintenance` 负责签名下载、事务更新和回滚；`hanako-bootstrap` 负责内嵌安装、快捷方式和卸载；`hanako-device-router` 负责 Linux 多设备路由和离线队列。
 
-当前 Rust 版本为 `2.0.0-alpha.2`。安装器、签名更新器和云端路由已经完成迁移并通过实机验证；Windows 稳定渠道仍为 `1.4.9`。保留 Node/PowerShell/WinUI 代码用于稳定版维护和回滚，不要提前删除。
+当前 Windows Rust 版本为 `2.0.0-alpha.3`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 3 增加了旧服务身份校验与接管、每安装目录单实例管理器、端口释放等待和 WebView2 卸载重试；Windows 稳定渠道仍为 `1.4.9`。保留 Node/PowerShell/WinUI 代码用于稳定版维护和回滚，不要提前删除。
 
 完整质量门：
 

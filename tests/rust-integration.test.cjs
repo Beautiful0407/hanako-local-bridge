@@ -9,7 +9,7 @@ const projectDir = path.resolve(__dirname, "..");
 const bridgeExe =
   process.env.HANAKO_RUST_BRIDGE_EXE ||
   path.join(projectDir, "target", "debug", "hanako-bridge.exe");
-const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.2";
+const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.3";
 
 async function checkedFetch(label, url, options) {
   try {
@@ -320,6 +320,14 @@ async function run() {
       identityPreflight.headers.get("access-control-allow-private-network"),
       "true",
     );
+
+    const approvalHealth = await checkedFetch(
+      "approval health",
+      `http://127.0.0.1:${approvalPort}/health`,
+    ).then((response) => response.json());
+    assert.equal(approvalHealth.ok, true);
+    assert.equal(approvalHealth.runtime, "rust");
+    assert.equal(approvalHealth.version, expectedVersion);
 
     const managerPage = await checkedFetch(
       "manager page",
