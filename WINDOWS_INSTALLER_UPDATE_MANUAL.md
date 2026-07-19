@@ -2,7 +2,7 @@
 
 稳定版本：`1.4.9`
 
-Rust 预发布版本：`2.0.0-alpha.4`
+Rust 预发布版本：`2.0.0-alpha.5`
 
 日期：`2026-07-19`
 
@@ -10,37 +10,39 @@ Rust 预发布版本：`2.0.0-alpha.4`
 
 ```text
 稳定渠道：1.4.9，继续用于现有 Windows 电脑
-Alpha 渠道：2.0.0-alpha.4，包含纯 Rust Bridge、Manager、Updater 和 Installer
+Alpha 渠道：2.0.0-alpha.5，包含纯 Rust Bridge、Manager、Updater 和 Installer
 云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
 ```
 
 不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。首次安装或覆盖修复必须使用内嵌安装器或签名更新清单。
 
-Alpha 4 发布文件：
+Alpha 5 发布文件：
 
 ```text
-build\rust-release-alpha4\HanakoLocalBridge-Setup-2.0.0-alpha.4.exe
-build\rust-release-alpha4\HanakoLocalBridge-2.0.0-alpha.4-win-x64.zip
-build\rust-release-alpha4\update-manifest.json
+build\rust-release-alpha5\HanakoLocalBridge-Setup-2.0.0-alpha.5.exe
+build\rust-release-alpha5\HanakoLocalBridge-2.0.0-alpha.5-win-x64.zip
+build\rust-release-alpha5\update-manifest.json
 ```
 
-Alpha 4 已验证：
+Alpha 5 已验证：
 
 ```text
 首次安装
 旧版 VBS、PowerShell watchdog 和脱离式 Node 进程自动停止并接管
+管理器云端状态、访问模式和诊断结果中文显示
+管理器内检测并修复、重启、停止和设置保存后的重启动作
 同目录覆盖安装
 桌面和开始菜单快捷方式
 计划任务启动与恢复
 重复点击快捷方式只保留一个管理器窗口
 卸载注册和后台卸载
 WebView2 退出延迟时重试清理安装目录
-Alpha 3 负载升级到 Alpha 4
+Alpha 4 负载升级到 Alpha 5
 配置、data、logs 和未知用户文件保留
 签名、SHA256、大小校验和失败回滚
 ```
 
-另一台已安装 Alpha 3 或仍残留旧 Node 服务的电脑不需要先卸载。关闭正在使用的管理器窗口后，直接双击 `HanakoLocalBridge-Setup-2.0.0-alpha.4.exe` 覆盖安装即可。安装器会停止旧计划任务及其脱离式 watchdog/Node 进程、等待本地端口释放、安装 Rust 服务并保留现有配置与数据。
+另一台已安装 Alpha 4 或仍残留旧 Node 服务的电脑不需要先卸载。关闭正在使用的管理器窗口后，直接双击 `HanakoLocalBridge-Setup-2.0.0-alpha.5.exe` 覆盖安装即可。安装器会停止旧计划任务及其脱离式 watchdog/Node 进程、等待本地端口释放、安装 Rust 服务并保留现有配置与数据。
 
 ## 1. 目标
 

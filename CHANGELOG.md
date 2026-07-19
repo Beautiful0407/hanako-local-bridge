@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.5 - 2026-07-19
+
+- Localized cloud connection, trust mode, diagnostic item, diagnostic status, root permission, root source, and update status values in the Rust manager.
+- Added clearer Chinese progress, success, connection, and Windows access-denied messages to the diagnostics interface.
+- Fixed manager repair, restart, stop, and settings-triggered restart failing with `Access is denied (os error 5)` inside the scheduled-task Windows Job.
+- Replaced `CREATE_BREAKAWAY_FROM_JOB` workers with an independent hidden on-demand scheduled task that cleans itself up after the service action.
+- Added a real installed-service regression step that fails on Alpha 4 and verifies the manager repair API on Alpha 5.
+- Added Alpha 4-to-Alpha 5 signed update coverage and rebuilt the Alpha 5 ZIP, manifest, and embedded installer.
+
 ## 2.0.0-alpha.4 - 2026-07-19
 
 - Fixed migration from stable Node installations whose scheduled task launches `wscript`, a PowerShell watchdog, and a detached `node.exe` process.

@@ -4,9 +4,9 @@
 
 ## Rust 2.0 Alpha 迁移
 
-仓库当前包含 `2.0.0-alpha.4` Rust 实现，用于替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket、后台任务、WebView2 托盘管理器、签名更新器、内嵌安装器和 Linux 多设备路由器。
+仓库当前包含 `2.0.0-alpha.5` Rust 实现，用于替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket、后台任务、WebView2 托盘管理器、签名更新器、内嵌安装器和 Linux 多设备路由器。
 
-`2.0.0-alpha.4` 已通过真实旧版 `wscript → PowerShell watchdog → node.exe` 接管、安装、覆盖、单实例管理器、WebView2 卸载、Alpha 3 签名更新、任务恢复、审计和云端协议测试；云服务器的设备路由器继续运行兼容的 Rust Alpha 2。Windows 正式渠道仍以稳定版 `1.4.9` 为准。不要手工复制 Alpha EXE；在测试电脑上应运行 Alpha 4 内嵌安装器进行覆盖修复，它会保留 `config.json`、`data` 和 `logs`。迁移状态、构建方式、兼容边界和发布门槛见 `RUST_MIGRATION.md`。
+`2.0.0-alpha.5` 已通过真实旧版 `wscript → PowerShell watchdog → node.exe` 接管、管理器修复动作、安装、覆盖、单实例管理器、WebView2 卸载、Alpha 4 签名更新、任务恢复、审计和云端协议测试；管理页状态和诊断结果已统一为中文。云服务器的设备路由器继续运行兼容的 Rust Alpha 2。Windows 正式渠道仍以稳定版 `1.4.9` 为准。不要手工复制 Alpha EXE；在测试电脑上应运行 Alpha 5 内嵌安装器进行覆盖修复，它会保留 `config.json`、`data` 和 `logs`。迁移状态、构建方式、兼容边界和发布门槛见 `RUST_MIGRATION.md`。
 
 ## 当前稳定配置：v1.4.9 安全连接与 HTTPS 签名更新版
 
@@ -63,7 +63,7 @@ offline：未连接，点击“检测并修复”
 
 ```text
 Windows Stable Bridge: 1.4.9
-Windows Rust Preview:  2.0.0-alpha.4
+Windows Rust Preview:  2.0.0-alpha.5
 Cloud Hana:            current deployed build
 Device Router:         2.0.0-alpha.2 (Rust)
 ```

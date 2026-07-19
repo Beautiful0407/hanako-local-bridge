@@ -2,24 +2,24 @@
 
 ## Status
 
-The Rust implementation is currently `2.0.0-alpha.4`.
+The Rust implementation is currently `2.0.0-alpha.5`.
 
-Alpha 4 contains the Windows bridge, manager, signed updater, and embedded installer. It completes migration from stable Node installations by detecting installations without a Rust manifest, stopping their scheduled tasks, and terminating only legacy processes associated with the target install directory. It also preserves detailed service-repair errors. The compatible Linux cloud router remains deployed at Alpha 2.
+Alpha 5 contains the Windows bridge, manager, signed updater, and embedded installer. It localizes manager status values and replaces service-action processes that used `CREATE_BREAKAWAY_FROM_JOB` with an independent hidden on-demand scheduled task. This fixes manager repair and restart failures inside the main service task's Windows Job. The compatible Linux cloud router remains deployed at Alpha 2.
 
-Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 4 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
+Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 5 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
 
 ## Why Rust
 
 The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. The Rust design produces three Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems.
 
-Measured from the rebuilt Windows x64 Alpha 4 release:
+Measured from the rebuilt Windows x64 Alpha 5 release:
 
 ```text
-hanako-bridge.exe       6,254,080 bytes
+hanako-bridge.exe       6,261,760 bytes
 hanako-manager.exe      2,299,904 bytes
 hanako-maintenance.exe  5,707,264 bytes
-runtime ZIP             6,668,025 bytes
-embedded installer      8,891,392 bytes
+runtime ZIP             6,671,833 bytes
+embedded installer      8,894,976 bytes
 ```
 
 For comparison, the stable `1.4.9` installer is about `95.91 MiB`. On the cloud host, the Rust device router used about `5.1 MiB` after the observation period; the replaced Node router used about `48.8 MiB`.
@@ -145,7 +145,7 @@ $manager = Start-Process target\release\hanako-manager.exe -ArgumentList '--smok
 if ($manager.ExitCode -ne 0) { throw "Manager smoke test failed" }
 ```
 
-The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, proves that ending the scheduled task does not release the port, verifies Alpha 4 process cleanup and overwrite, launches the installed manager twice, and uninstalls after WebView2 startup. The update smoke test installs an Alpha 3 payload, injects the current Alpha 4 maintenance binary, and verifies deterministic signed update handoff.
+The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 5 takeover, calls the installed manager repair API from the real scheduled service, checks overwrite and manager single-instance behavior, and uninstalls after WebView2 startup. The update smoke test installs an Alpha 4 payload, injects the current Alpha 5 maintenance binary, and verifies deterministic signed update handoff.
 
 ## Release Packaging
 
@@ -162,16 +162,16 @@ cargo build --workspace --release
 
 target\release\hanako-maintenance.exe pack `
   --binaries target\release `
-  --output build\rust-release-alpha4 `
+  --output build\rust-release-alpha5 `
   --public-key update-public-key.xml `
-  --version 2.0.0-alpha.4 `
+  --version 2.0.0-alpha.5 `
   --channel alpha `
-  --package-url HanakoLocalBridge-2.0.0-alpha.4-win-x64.zip `
+  --package-url HanakoLocalBridge-2.0.0-alpha.5-win-x64.zip `
   --signing-key "$env:USERPROFILE\.hanako-update-signing\private-key.xml" `
-  --notes "Hanako Local Bridge Rust 2.0.0-alpha.4"
+  --notes "Hanako Local Bridge Rust 2.0.0-alpha.5"
 
 $env:HANA_INSTALLER_PAYLOAD = (
-  Resolve-Path 'build\rust-release-alpha4\HanakoLocalBridge-2.0.0-alpha.4-win-x64.zip'
+  Resolve-Path 'build\rust-release-alpha5\HanakoLocalBridge-2.0.0-alpha.5-win-x64.zip'
 ).Path
 cargo build -p hanako-bootstrap --release
 ```
@@ -244,7 +244,7 @@ The previous Node script and a root-only timestamped backup remain on the server
 
 ## Remaining Production Work
 
-1. Publish the signed Alpha 4 installer and manifest to the separate prerelease channel.
+1. Publish the signed Alpha 5 installer and manifest to the separate prerelease channel.
 2. Verify installation, tray behavior, update, uninstall, and reboot recovery on clean Windows 10 and Windows 11 virtual machines.
 3. Run a staged migration on a non-primary device before offering the Rust installer to the stable fleet.
 4. Keep the Node/PowerShell/VBS/WinUI implementation until stable clients have completed a rollback-capable migration.

@@ -3,17 +3,14 @@ use std::{
     net::{Ipv4Addr, TcpListener},
     os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     time::{Duration, Instant},
 };
 
 use hanako_bridge_core::RuntimeConfig;
 use serde::Serialize;
 
-const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +38,9 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
         .parent()
         .map(Path::to_path_buf)
         .ok_or_else(|| anyhow::anyhow!("cannot resolve bridge install directory"))?;
-    let runtime = RuntimeConfig::load(&install_dir, None)?;
+    let config_override = argument_value(&arguments, "--service-config").map(PathBuf::from);
+    let cleanup_task = argument_value(&arguments, "--cleanup-task");
+    let runtime = RuntimeConfig::load(&install_dir, config_override.as_deref())?;
     let task_name = format!("{} MCP", runtime.config.service.task_prefix.trim());
     match command {
         "install" | "repair" => {
@@ -54,6 +53,7 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
             delete_task(&task_name)?;
             let legacy_tunnel = format!("{} Tunnel", runtime.config.service.task_prefix.trim());
             let _ = delete_task(&legacy_tunnel);
+            let _ = delete_task(&manager_action_task_name(&runtime));
             print_json(&service_status(&runtime, &task_name).await?)?;
         }
         "start" => {
@@ -73,12 +73,17 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
                 .get(index + 2)
                 .and_then(|value| value.to_str())
                 .and_then(|value| value.parse::<u32>().ok());
-            if let Some(pid) = wait_pid {
-                wait_for_process_exit(pid, Duration::from_secs(30)).await;
+            let result = async {
+                if let Some(pid) = wait_pid {
+                    wait_for_process_exit(pid, Duration::from_secs(30)).await;
+                }
+                let _ = stop_task(&task_name);
+                tokio::time::sleep(Duration::from_millis(600)).await;
+                start_task(&task_name)
             }
-            let _ = stop_task(&task_name);
-            tokio::time::sleep(Duration::from_millis(600)).await;
-            start_task(&task_name)?;
+            .await;
+            cleanup_action_task(cleanup_task.as_deref());
+            result?;
         }
         "deferred-action" => {
             let action = arguments
@@ -86,19 +91,20 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
                 .and_then(|value| value.to_str())
                 .unwrap_or("");
             tokio::time::sleep(Duration::from_millis(800)).await;
-            match action {
-                "stop" => stop_task(&task_name)?,
+            let result = match action {
+                "stop" => stop_task(&task_name),
                 "restart" => {
                     let _ = stop_task(&task_name);
                     tokio::time::sleep(Duration::from_millis(800)).await;
-                    start_task(&task_name)?;
+                    start_task(&task_name)
                 }
                 "repair" => {
-                    install_task(&runtime, &task_name)?;
-                    start_task(&task_name)?;
+                    install_task(&runtime, &task_name).and_then(|()| start_task(&task_name))
                 }
-                _ => anyhow::bail!("unknown deferred service action: {action}"),
-            }
+                _ => Err(anyhow::anyhow!("unknown deferred service action: {action}")),
+            };
+            cleanup_action_task(cleanup_task.as_deref());
+            result?;
         }
         "status" => print_json(&service_status(&runtime, &task_name).await?)?,
         _ => anyhow::bail!("unknown service command: {command}"),
@@ -110,21 +116,7 @@ pub fn spawn_deferred_action(runtime: &RuntimeConfig, action: &str) -> anyhow::R
     if !matches!(action, "stop" | "restart" | "repair") {
         anyhow::bail!("unsupported deferred service action: {action}");
     }
-    let executable = env::current_exe()?;
-    Command::new(executable)
-        .args(["--service-command", "deferred-action", action])
-        .env("HANA_LOCAL_BRIDGE_CONFIG", &runtime.config_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(
-            DETACHED_PROCESS
-                | CREATE_NEW_PROCESS_GROUP
-                | CREATE_NO_WINDOW
-                | CREATE_BREAKAWAY_FROM_JOB,
-        )
-        .spawn()?;
-    Ok(())
+    schedule_service_action(runtime, "deferred-action", &[action])
 }
 
 pub async fn service_status(
@@ -246,27 +238,69 @@ fn run_schtasks<const N: usize>(arguments: [&str; N]) -> anyhow::Result<()> {
 }
 
 fn spawn_restart_worker(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> {
-    let executable = env::current_exe()?;
-    let mut command = Command::new(executable);
-    command
-        .args([
-            "--service-command",
-            "restart-worker",
-            &std::process::id().to_string(),
-        ])
-        .env("HANA_LOCAL_BRIDGE_CONFIG", &runtime.config_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(
-            DETACHED_PROCESS
-                | CREATE_NEW_PROCESS_GROUP
-                | CREATE_NO_WINDOW
-                | CREATE_BREAKAWAY_FROM_JOB,
-        );
-    command.spawn()?;
     let _ = task_name;
+    let pid = std::process::id().to_string();
+    schedule_service_action(runtime, "restart-worker", &[&pid])
+}
+
+fn schedule_service_action(
+    runtime: &RuntimeConfig,
+    command: &str,
+    arguments: &[&str],
+) -> anyhow::Result<()> {
+    let executable = env::current_exe()?;
+    let user = current_user()?;
+    let action_task = manager_action_task_name(runtime);
+    let xml = action_task_xml(
+        &action_task,
+        &user,
+        &executable,
+        &runtime.config_path,
+        command,
+        arguments,
+    );
+    let task_file = env::temp_dir().join(format!(
+        "hanako-manager-action-{}-{}.xml",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    write_task_xml(&task_file, &xml)?;
+    let create_result = run_schtasks([
+        "/Create",
+        "/TN",
+        &action_task,
+        "/XML",
+        task_file.to_string_lossy().as_ref(),
+        "/F",
+    ]);
+    let _ = fs::remove_file(&task_file);
+    create_result?;
+    if let Err(error) = start_task(&action_task) {
+        let _ = delete_task(&action_task);
+        return Err(error);
+    }
     Ok(())
+}
+
+fn manager_action_task_name(runtime: &RuntimeConfig) -> String {
+    format!(
+        "{} Manager Action",
+        runtime.config.service.task_prefix.trim()
+    )
+}
+
+fn cleanup_action_task(task_name: Option<&str>) {
+    if let Some(task_name) = task_name.filter(|value| !value.trim().is_empty()) {
+        let _ = delete_task(task_name);
+    }
+}
+
+fn argument_value(arguments: &[std::ffi::OsString], name: &str) -> Option<String> {
+    arguments
+        .iter()
+        .position(|argument| argument == name)
+        .and_then(|index| arguments.get(index + 1))
+        .map(|value| value.to_string_lossy().into_owned())
 }
 
 fn current_user() -> anyhow::Result<String> {
@@ -414,6 +448,82 @@ fn task_xml(
     )
 }
 
+fn action_task_xml(
+    task_name: &str,
+    user: &str,
+    executable: &Path,
+    config_path: &Path,
+    command: &str,
+    arguments: &[&str],
+) -> String {
+    let description = format!("Hanako Local Bridge manager action: {command}");
+    let mut command_arguments = vec![
+        "--service-command".to_string(),
+        command.to_string(),
+        "--service-config".to_string(),
+        config_path.to_string_lossy().into_owned(),
+        "--cleanup-task".to_string(),
+        task_name.to_string(),
+    ];
+    command_arguments.splice(2..2, arguments.iter().map(|value| (*value).to_string()));
+    let command_line = command_arguments
+        .iter()
+        .map(|value| xml_quoted_argument(value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{}</Description>
+  </RegistrationInfo>
+  <Triggers />
+  <Principals>
+    <Principal id="Author">
+      <UserId>{}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{}</Command>
+      <Arguments>{}</Arguments>
+      <WorkingDirectory>{}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"#,
+        xml_escape(&description),
+        xml_escape(user),
+        xml_escape(executable.to_string_lossy().as_ref()),
+        command_line,
+        xml_escape(
+            executable
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_string_lossy()
+                .as_ref()
+        ),
+    )
+}
+
+fn xml_quoted_argument(value: &str) -> String {
+    format!("&quot;{}&quot;", xml_escape(value))
+}
+
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -472,6 +582,26 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(String::from_utf16(&units).unwrap(), source);
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn manager_actions_run_in_an_independent_on_demand_task() {
+        let xml = action_task_xml(
+            "Hanako & Bridge Manager Action",
+            r"DOMAIN\User",
+            Path::new(r"C:\Apps\Hanako & Bridge\hanako-bridge.exe"),
+            Path::new(r"C:\Apps\Hanako & Bridge\config.json"),
+            "deferred-action",
+            &["repair"],
+        );
+        assert!(xml.contains("<Triggers />"));
+        assert!(xml.contains("&quot;deferred-action&quot;"));
+        assert!(xml.contains("&quot;repair&quot;"));
+        assert!(xml.contains("&quot;--service-config&quot;"));
+        assert!(xml.contains(r"C:\Apps\Hanako &amp; Bridge\config.json"));
+        assert!(xml.contains("&quot;--cleanup-task&quot;"));
+        assert!(xml.contains("Hanako &amp; Bridge Manager Action"));
+        assert!(!xml.contains("CREATE_BREAKAWAY_FROM_JOB"));
     }
 
     #[test]

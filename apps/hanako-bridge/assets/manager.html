@@ -17,6 +17,7 @@
     button, input, select { font: inherit; }
     button { min-height: 32px; border: 1px solid #b8bec6; background: #fff; color: #202124; padding: 0 13px; border-radius: 6px; cursor: pointer; }
     button:hover { background: #f0f3f7; }
+    button:disabled { cursor: wait; opacity: 0.62; }
     button.primary { background: #1769aa; color: #fff; border-color: #1769aa; }
     button.danger { color: #a12622; }
     input, select { width: 100%; min-height: 34px; border: 1px solid #b8bec6; border-radius: 5px; padding: 5px 9px; background: #fff; color: #202124; }
@@ -54,6 +55,11 @@
     th { color: #68717b; font-weight: 600; }
     tr:last-child td { border-bottom: 0; }
     .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; background: #edf0f3; font-size: 12px; }
+    .badge.pass { background: #e2f3e8; color: #176c3a; }
+    .badge.warning { background: #fff0d5; color: #8b570d; }
+    .badge.error { background: #fbe3e3; color: #a12622; }
+    #check-rows td:first-child { width: 150px; font-weight: 600; }
+    #check-rows td:nth-child(2) { width: 90px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
     label { display: grid; gap: 6px; color: #59636e; font-size: 13px; }
@@ -62,6 +68,8 @@
     .root-row button { padding: 0; font-size: 18px; }
     pre { margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 14px; background: #15181c; color: #e7eaf0; border-radius: 6px; font: 12px/1.55 Consolas, monospace; white-space: pre-wrap; }
     .message { min-height: 22px; margin-top: 10px; color: #1769aa; font-size: 13px; }
+    .message.success { color: #176c3a; }
+    .message.error { color: #a12622; }
     @media (prefers-color-scheme: dark) {
       :root, body { background: #17191c; color: #edf0f3; }
       aside { background: #202328; border-color: #343941; }
@@ -71,6 +79,11 @@
       nav button.active { background: #273f54; color: #9bc9ef; }
       th, td { border-color: #373c44; }
       .badge { background: #343a42; }
+      .badge.pass { background: #1f4932; color: #a9e7bf; }
+      .badge.warning { background: #55401d; color: #ffd48b; }
+      .badge.error { background: #562828; color: #ffb2ae; }
+      .message.success { color: #8ed4a8; }
+      .message.error { color: #ff9d98; }
     }
   </style>
 </head>
@@ -190,6 +203,53 @@ const TOKEN = "__HANA_APPROVAL_TOKEN__";
 const headers = { "Content-Type": "application/json", "X-Approval-Token": TOKEN };
 let snapshot = null;
 let checkedUpdate = null;
+const CLOUD_STATUS_TEXT = Object.freeze({
+  active: "已连接",
+  pending_claim: "等待绑定",
+  connecting: "正在连接",
+  authenticating: "正在验证",
+  offline: "离线",
+  disabled: "已停用",
+  error: "连接异常"
+});
+const TRUST_MODE_TEXT = Object.freeze({
+  full: "完全信任",
+  approval: "逐项审批"
+});
+const CHECK_NAME_TEXT = Object.freeze({
+  config: "配置文件",
+  service_task: "后台任务",
+  mcp_health: "本地 MCP",
+  cloud: "云端连接",
+  maintenance: "更新组件"
+});
+const CHECK_STATUS_TEXT = Object.freeze({
+  pass: "正常",
+  warning: "需注意",
+  error: "异常"
+});
+const ROOT_MODE_TEXT = Object.freeze({
+  read_write: "读写",
+  read: "只读"
+});
+const ROOT_SOURCE_TEXT = Object.freeze({
+  config: "固定配置",
+  chat: "会话授权",
+  manual: "手动授权"
+});
+const UPDATE_STATUS_TEXT = Object.freeze({
+  none: "尚无更新记录",
+  checking: "正在检查",
+  downloading: "正在下载",
+  applying: "正在安装",
+  succeeded: "更新成功",
+  failed: "更新失败"
+});
+const ACTION_TEXT = Object.freeze({
+  repair: { pending: "正在启动检测与修复...", success: "修复任务已启动，正在重新检测服务状态。" },
+  restart: { pending: "正在重启服务...", success: "重启任务已启动，服务恢复后会自动刷新。" },
+  stop: { pending: "正在停止服务...", success: "停止任务已启动，当前窗口稍后会断开连接。" }
+});
 
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { ...headers, ...(options.headers || {}) } });
@@ -200,6 +260,30 @@ async function api(path, options = {}) {
 
 function text(id, value) { document.getElementById(id).textContent = value ?? "-"; }
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch])); }
+function displayText(map, value, fallback = "未知") { return map[value] || fallback; }
+function cloudStatusText(value) { return displayText(CLOUD_STATUS_TEXT, value, value || "离线"); }
+function trustModeText(value) { return displayText(TRUST_MODE_TEXT, value, value || "未知"); }
+function checkNameText(value) { return displayText(CHECK_NAME_TEXT, value, value || "未知检查项"); }
+function checkStatusText(value) { return displayText(CHECK_STATUS_TEXT, value, value || "未知"); }
+function checkStatusClass(value) { return ["pass", "warning", "error"].includes(value) ? value : ""; }
+function rootModeText(value) { return displayText(ROOT_MODE_TEXT, value, value || "未知"); }
+function rootSourceText(value) { return displayText(ROOT_SOURCE_TEXT, value, value || "配置"); }
+function updateStatusText(value) { return displayText(UPDATE_STATUS_TEXT, value, value || "尚无更新记录"); }
+function friendlyError(error) {
+  const message = String(error?.message || error || "操作失败");
+  if (/Access is denied|os error 5|拒绝访问/i.test(message)) {
+    return "Windows 拒绝了服务操作，请安装最新版本后重新执行检测与修复。";
+  }
+  if (/Failed to fetch|NetworkError/i.test(message)) {
+    return "本地服务暂时无法连接，请等待几秒后重新检测。";
+  }
+  return message;
+}
+function setMessage(id, value, state = "") {
+  const element = document.getElementById(id);
+  element.textContent = value;
+  element.className = `message ${state}`.trim();
+}
 
 function render(data) {
   snapshot = data;
@@ -208,23 +292,23 @@ function render(data) {
   text("header-status", healthy ? "运行正常" : "需要处理");
   document.getElementById("header-dot").className = `dot ${healthy ? "pass" : "error"}`;
   text("metric-mcp", data.service.healthOk ? "在线" : "离线");
-  text("metric-cloud", data.cloud.status || "离线");
+  text("metric-cloud", cloudStatusText(data.cloud.status));
   text("metric-task", data.service.taskExists ? "已安装" : "缺失");
   text("metric-version", data.version);
   text("detail-device-id", data.device.id);
   text("detail-device-name", data.device.name);
   text("detail-mcp", `http://127.0.0.1:${data.local.mcpPort}/mcp`);
   text("detail-status", `http://127.0.0.1:${data.local.statusPort}/manager/`);
-  text("detail-trust", data.local.trustMode);
+  text("detail-trust", trustModeText(data.local.trustMode));
   text("detail-cloud-url", data.cloud.cloudUrl);
   text("detail-config", data.configPath);
   text("detail-install", data.installRoot);
   text("update-current", data.version);
   const updateState = data.update?.state;
-  text("update-state", updateState?.status || "尚无更新记录");
+  text("update-state", updateStatusText(updateState?.status));
   if (updateState?.message) text("update-message", updateState.message);
-  document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(item.code)}</td><td><span class="badge">${esc(item.status)}</span></td><td>${esc(item.detail)}</td></tr>`).join("");
-  document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(root.mode)}</td><td>${esc(root.source)}</td></tr>`).join("");
+  document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(checkNameText(item.code))}</td><td><span class="badge ${checkStatusClass(item.status)}">${esc(checkStatusText(item.status))}</span></td><td>${esc(item.detail)}</td></tr>`).join("");
+  document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(rootModeText(root.mode))}</td><td>${esc(rootSourceText(root.source))}</td></tr>`).join("");
   fillSettings(data.settings);
 }
 
@@ -253,7 +337,7 @@ function addRootRow(root = { name: "", path: "", mode: "read_write" }) {
 
 async function refresh() {
   try { render(await api("/api/manager/snapshot")); }
-  catch (error) { text("header-status", error.message); document.getElementById("header-dot").className = "dot error"; }
+  catch (error) { text("header-status", friendlyError(error)); document.getElementById("header-dot").className = "dot error"; }
 }
 
 async function loadLogs() {
@@ -276,7 +360,19 @@ document.querySelectorAll("nav button").forEach(button => button.onclick = () =>
   document.querySelectorAll(".page").forEach(page => page.classList.toggle("active", page.id === `page-${button.dataset.page}`));
   if (button.dataset.page === "logs") loadLogs().catch(error => text("log-content", error.message));
 });
-document.getElementById("refresh-button").onclick = refresh;
+document.getElementById("refresh-button").onclick = async () => {
+  const button = document.getElementById("refresh-button");
+  button.disabled = true;
+  setMessage("diagnostic-message", "正在检测配置、后台任务和连接状态...");
+  try {
+    render(await api("/api/manager/snapshot"));
+    setMessage("diagnostic-message", "检测完成，结果已刷新。", "success");
+  } catch (error) {
+    setMessage("diagnostic-message", friendlyError(error), "error");
+  } finally {
+    button.disabled = false;
+  }
+};
 document.getElementById("log-refresh").onclick = () => loadLogs().catch(error => text("log-content", error.message));
 document.getElementById("log-select").onchange = () => loadLogTail().catch(error => text("log-content", error.message));
 document.getElementById("add-root").onclick = () => addRootRow();
@@ -314,13 +410,20 @@ document.getElementById("update-install").onclick = async () => {
   }
 };
 document.querySelectorAll("[data-action]").forEach(button => button.onclick = async () => {
-  const message = document.getElementById("diagnostic-message");
+  const action = button.dataset.action;
+  const copy = ACTION_TEXT[action] || { pending: "正在提交操作...", success: "操作已提交。" };
+  const actionButtons = [...document.querySelectorAll("[data-action]")];
+  actionButtons.forEach(item => item.disabled = true);
   try {
-    message.textContent = "正在提交操作...";
-    await api("/api/manager/action", { method: "POST", body: JSON.stringify({ action: button.dataset.action }) });
-    message.textContent = "操作已提交，服务状态稍后刷新。";
-    setTimeout(refresh, 2500);
-  } catch (error) { message.textContent = error.message; }
+    setMessage("diagnostic-message", copy.pending);
+    await api("/api/manager/action", { method: "POST", body: JSON.stringify({ action }) });
+    setMessage("diagnostic-message", copy.success, "success");
+    if (action !== "stop") setTimeout(refresh, 2500);
+  } catch (error) {
+    setMessage("diagnostic-message", friendlyError(error), "error");
+  } finally {
+    actionButtons.forEach(item => item.disabled = false);
+  }
 });
 document.getElementById("settings-form").onsubmit = async event => {
   event.preventDefault();
@@ -347,7 +450,7 @@ document.getElementById("settings-form").onsubmit = async event => {
       })
     });
     message.textContent = "设置已保存，正在重启服务。";
-  } catch (error) { message.textContent = error.message; }
+  } catch (error) { message.textContent = friendlyError(error); }
 };
 
 refresh();

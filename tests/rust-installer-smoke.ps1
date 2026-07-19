@@ -7,10 +7,11 @@ $runId = [Guid]::NewGuid().ToString("N")
 $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha4\HanakoLocalBridge-Setup-2.0.0-alpha.4.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha4\HanakoLocalBridge-2.0.0-alpha.4-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha4Smoke"
-$taskName = "Hanako Rust Alpha4 Smoke MCP"
+$installer = Join-Path $buildRoot "rust-release-alpha5\HanakoLocalBridge-Setup-2.0.0-alpha.5.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha5\HanakoLocalBridge-2.0.0-alpha.5-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha5Smoke"
+$taskName = "Hanako Rust Alpha5 Smoke MCP"
+$actionTaskName = "Hanako Rust Alpha5 Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
 $legacyServer = Join-Path $testRoot "legacy-server.cjs"
 $legacyLauncher = Join-Path $testRoot "run-legacy-hidden.vbs"
@@ -50,20 +51,43 @@ function Test-TaskExists {
   return $LASTEXITCODE -eq 0
 }
 
+function Test-ActionTaskExists {
+  & cmd.exe /d /c "schtasks.exe /Query /TN `"$actionTaskName`" >nul 2>&1"
+  return $LASTEXITCODE -eq 0
+}
+
 function Test-BridgeHealth {
   try {
     $health = Invoke-RestMethod "http://127.0.0.1:38887/health"
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.4" -and
+      $health.version -eq "2.0.0-alpha.5" -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.4"
+      $approvalHealth.version -eq "2.0.0-alpha.5"
     )
   } catch {
     return $false
   }
+}
+
+function Get-ManagerToken {
+  $page = Invoke-WebRequest "http://127.0.0.1:38888/manager/" -UseBasicParsing
+  if ($page.Content -notmatch 'const TOKEN = "([^"]+)";') {
+    throw "Manager page did not expose the approval token."
+  }
+  return $Matches[1]
+}
+
+function Invoke-ManagerAction([string]$Action) {
+  $token = Get-ManagerToken
+  return Invoke-RestMethod `
+    -Uri "http://127.0.0.1:38888/api/manager/action" `
+    -Method Post `
+    -Headers @{ "X-Approval-Token" = $token } `
+    -ContentType "application/json" `
+    -Body (@{ action = $Action } | ConvertTo-Json -Compress)
 }
 
 function Test-LegacyApprovalServer {
@@ -216,8 +240,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 4 installer is missing."
-  Assert-Path $payload "Rust Alpha 4 payload is missing."
+  Assert-Path $installer "Rust Alpha 5 installer is missing."
+  Assert-Path $payload "Rust Alpha 5 payload is missing."
 
   New-Item -ItemType Directory -Force -Path $profileRoot, $appDataRoot | Out-Null
 
@@ -257,7 +281,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha4 Smoke"
+      taskPrefix = "Hanako Rust Alpha5 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -305,9 +329,18 @@ try {
   Assert-Path (Join-Path $profileRoot "Desktop\Hanako Local Bridge.lnk") "Desktop shortcut was not created."
   Set-Stage "first install assertions passed"
   Assert-Path (Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk") "Start menu shortcut was not created."
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha4Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha5Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
+
+  $stage = "manager repair action"
+  Set-Stage $stage
+  $repair = Invoke-ManagerAction "repair"
+  if ($repair.ok -ne $true -or $repair.action -ne "repair") {
+    throw "Manager repair action was not accepted."
+  }
+  Wait-Until { Test-BridgeHealth } "Rust bridge did not become healthy after manager repair."
+  Wait-Until { -not (Test-ActionTaskExists) } "Manager repair action task was not cleaned up."
 
   $stage = "overwrite install"
   Set-Stage $stage
@@ -352,7 +385,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $testRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha4Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha5Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -367,13 +400,15 @@ try {
   }
   & cmd.exe /d /c "schtasks.exe /End /TN `"$taskName`" >nul 2>&1"
   & cmd.exe /d /c "schtasks.exe /Delete /TN `"$taskName`" /F >nul 2>&1"
+  & cmd.exe /d /c "schtasks.exe /End /TN `"$actionTaskName`" >nul 2>&1"
+  & cmd.exe /d /c "schtasks.exe /Delete /TN `"$actionTaskName`" /F >nul 2>&1"
   Stop-LegacyFixtureProcesses
   if ($passed) {
     if (Test-Path -LiteralPath $testRoot) {
       Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha4Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha5Smoke" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData

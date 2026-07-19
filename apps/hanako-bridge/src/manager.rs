@@ -492,3 +492,20 @@ fn is_inside(path: &Path, root: &Path) -> bool {
         .to_ascii_lowercase();
     path == root || path.starts_with(&(root + "\\"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manager_page_localizes_protocol_statuses_and_diagnostics() {
+        assert!(MANAGER_HTML.contains("active: \"已连接\""));
+        assert!(MANAGER_HTML.contains("full: \"完全信任\""));
+        assert!(MANAGER_HTML.contains("service_task: \"后台任务\""));
+        assert!(MANAGER_HTML.contains("pass: \"正常\""));
+        assert!(MANAGER_HTML.contains("Windows 拒绝了服务操作"));
+        assert!(!MANAGER_HTML.contains("text(\"metric-cloud\", data.cloud.status"));
+        assert!(!MANAGER_HTML.contains("${esc(item.code)}"));
+        assert!(!MANAGER_HTML.contains("${esc(item.status)}"));
+    }
+}
