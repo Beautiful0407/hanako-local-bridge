@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hanako Local Bridge 开发"
+  short_description: "开发、测试、发布和维护 Hanako 本地 MCP 文件桥"
+  default_prompt: "Use $hanako-local-bridge-dev to continue developing, testing, and safely releasing the Hanako Local Bridge MCP."
