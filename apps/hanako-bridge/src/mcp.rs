@@ -389,6 +389,28 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             json!({ "jobId": { "type": "string" } }),
             &["jobId"],
         ),
+        tool(
+            "local_exec.list_processes",
+            "List running processes",
+            "List running processes on the connected Windows computer, optionally filtered by an image-name substring (case-insensitive). Returns pid, name, and sessionId for each. Use this to see how many instances of an application are running before terminating any.",
+            json!({
+                "name": { "type": "string" },
+                "limit": { "type": "number" }
+            }),
+            &[],
+        ),
+        tool(
+            "local_exec.terminate",
+            "Terminate a process or process tree",
+            "Terminate a process by pid, or every process whose image name contains a substring. By default kills the whole process tree (tree=false for a single process). Returns which pids were terminated, which failed and why, and which were protected. This bridge, its running job workers, and the Hanako manager/updater are always protected and never killed. NOTE: this is not a security boundary — it only prevents the bridge from harming itself. A by-name match of more than one process requires confirm:true (or a specific pid) so a vague instruction cannot mass-kill an application family.",
+            json!({
+                "pid": { "type": "number" },
+                "name": { "type": "string" },
+                "tree": { "type": "boolean" },
+                "confirm": { "type": "boolean" }
+            }),
+            &[],
+        ),
     ]
 }
 
@@ -667,6 +689,10 @@ async fn call_execution_tool(
             )
             .map_err(|error| BridgeError::tool("job_cancel_failed", error.to_string()))?,
         )),
+        "local_exec.list_processes" => Ok(content_json(
+            state.execution.list_processes(arguments).await?,
+        )),
+        "local_exec.terminate" => Ok(content_json(state.execution.terminate(arguments).await?)),
         _ => Err(BridgeError::tool(
             "unknown_tool",
             format!("unknown tool: {name}"),

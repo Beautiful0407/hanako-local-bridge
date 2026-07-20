@@ -533,6 +533,169 @@ impl ExecutionController {
         Ok(result)
     }
 
+    // PIDs that terminate must never touch: this process, its running job
+    // workers (same exe, spawned with --job-runner), and by-name the manager
+    // and maintenance executables. Job workers cannot be told apart from the
+    // bridge by name, so protection is PID-based.
+    async fn protected_pids(&self) -> std::collections::HashSet<u32> {
+        let mut protected = std::collections::HashSet::new();
+        protected.insert(std::process::id());
+        for job in self.jobs.read().await.values() {
+            if job.status == "running"
+                && let Some(pid) = job.pid
+            {
+                protected.insert(pid);
+            }
+        }
+        for proc in list_processes_raw() {
+            let lower = proc.name.to_ascii_lowercase();
+            if lower == "hanako-manager.exe" || lower == "hanako-maintenance.exe" {
+                protected.insert(proc.pid);
+            }
+        }
+        protected
+    }
+
+    pub async fn list_processes(&self, arguments: &Value) -> BridgeResult<Value> {
+        let filter = arguments
+            .get("name")
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+        let limit = arguments
+            .get("limit")
+            .and_then(Value::as_u64)
+            .map(|value| value as usize)
+            .unwrap_or(200)
+            .clamp(1, 5000);
+        let mut all = list_processes_raw();
+        if let Some(needle) = filter.as_ref() {
+            all.retain(|proc| proc.name.to_ascii_lowercase().contains(needle));
+        }
+        let total = all.len();
+        let truncated = total > limit;
+        all.truncate(limit);
+        Ok(json!({
+            "processes": all,
+            "total": total,
+            "truncated": truncated
+        }))
+    }
+
+    pub async fn terminate(&self, arguments: &Value) -> BridgeResult<Value> {
+        let tree = arguments
+            .get("tree")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let confirm = arguments
+            .get("confirm")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let explicit_pid = arguments
+            .get("pid")
+            .and_then(Value::as_u64)
+            .map(|v| v as u32);
+        let name = arguments
+            .get("name")
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty());
+
+        if explicit_pid.is_none() && name.is_none() {
+            return Err(BridgeError::tool(
+                "target_required",
+                "terminate requires either a pid or a name",
+            ));
+        }
+
+        let protected = self.protected_pids().await;
+
+        // Resolve the candidate PIDs. For a by-name request, snapshot the
+        // matching PIDs now; each PID's image name is re-verified at kill time
+        // to guard against PID reuse between listing and killing.
+        let snapshot = list_processes_raw();
+        let mut matched: Vec<u32> = Vec::new();
+        if let Some(pid) = explicit_pid {
+            matched.push(pid);
+        }
+        if let Some(needle) = name.as_ref() {
+            for proc in &snapshot {
+                if proc.name.to_ascii_lowercase().contains(needle) {
+                    matched.push(proc.pid);
+                }
+            }
+        }
+        matched.sort_unstable();
+        matched.dedup();
+
+        let mut protected_hit: Vec<u32> = Vec::new();
+        let mut targets: Vec<u32> = Vec::new();
+        for pid in &matched {
+            if protected.contains(pid) {
+                protected_hit.push(*pid);
+            } else {
+                targets.push(*pid);
+            }
+        }
+
+        // A by-name request that resolves to more than one PID must be
+        // confirmed to avoid an agent killing a whole browser or app family
+        // from a vague instruction. A single explicit pid needs no confirm.
+        let needs_confirm = name.is_some() && targets.len() > 1 && explicit_pid.is_none();
+        if needs_confirm && !confirm {
+            return Ok(json!({
+                "requiresConfirmation": true,
+                "matched": matched,
+                "protected": protected_hit,
+                "wouldTerminate": targets,
+                "message": "multiple processes matched; call again with confirm:true (or a specific pid) to terminate"
+            }));
+        }
+
+        let expected_name = name.clone();
+        let mut terminated: Vec<u32> = Vec::new();
+        let mut failed: Vec<Value> = Vec::new();
+        let mut not_found = false;
+        for pid in targets {
+            // Re-verify the image still matches before killing (PID reuse guard).
+            if let Some(needle) = expected_name.as_ref() {
+                let still_matches = list_processes_raw()
+                    .into_iter()
+                    .any(|proc| proc.pid == pid && proc.name.to_ascii_lowercase().contains(needle));
+                if !still_matches {
+                    not_found = true;
+                    continue;
+                }
+            }
+            match taskkill_capture(pid, tree) {
+                TaskkillOutcome::Terminated => terminated.push(pid),
+                TaskkillOutcome::NotFound => not_found = true,
+                TaskkillOutcome::Failed(reason) => {
+                    failed.push(json!({ "pid": pid, "reason": reason }))
+                }
+            }
+        }
+
+        self.audit(json!({
+            "action": "terminate",
+            "pid": explicit_pid,
+            "name": name,
+            "tree": tree,
+            "terminated": terminated,
+            "failed": failed.len(),
+            "protected": protected_hit,
+        }))
+        .await;
+
+        Ok(json!({
+            "terminated": terminated,
+            "failed": failed,
+            "protected": protected_hit,
+            "matched": matched,
+            "notFound": not_found
+        }))
+    }
+
     pub async fn detect_runtimes(&self, refresh: bool) -> RuntimeStatus {
         let mut cache = self.runtime_cache.lock().await;
         let now = unix_millis();
@@ -1582,6 +1745,136 @@ fn kill_process_tree(pid: u32) {
         .output();
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcInfo {
+    pid: u32,
+    name: String,
+    session_id: Option<u32>,
+}
+
+// Parse `tasklist.exe /FO CSV /NH` output. Each row is quoted CSV:
+// "Image Name","PID","Session Name","Session#","Mem Usage"
+fn parse_tasklist_csv(text: &str) -> Vec<ProcInfo> {
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let fields = parse_csv_row(line);
+        if fields.len() < 2 {
+            continue;
+        }
+        let Ok(pid) = fields[1].trim().parse::<u32>() else {
+            continue;
+        };
+        let session_id = fields
+            .get(3)
+            .and_then(|value| value.trim().parse::<u32>().ok());
+        rows.push(ProcInfo {
+            pid,
+            name: fields[0].clone(),
+            session_id,
+        });
+    }
+    rows
+}
+
+// Minimal CSV row parser for tasklist output: fields are wrapped in double
+// quotes and separated by commas; embedded quotes are not expected in image
+// names, but commas can appear so we split on quote boundaries, not commas.
+fn parse_csv_row(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                if in_quotes && chars.peek() == Some(&'"') {
+                    current.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            }
+            ',' if !in_quotes => {
+                fields.push(std::mem::take(&mut current));
+            }
+            other => current.push(other),
+        }
+    }
+    fields.push(current);
+    fields
+}
+
+fn list_processes_raw() -> Vec<ProcInfo> {
+    let output = StdCommand::new("tasklist.exe")
+        .args(["/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    output
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| parse_tasklist_csv(&String::from_utf8_lossy(&output.stdout)))
+        .unwrap_or_default()
+}
+
+#[derive(Debug)]
+enum TaskkillOutcome {
+    Terminated,
+    NotFound,
+    Failed(String),
+}
+
+// Classify taskkill result from stderr/stdout text rather than exit codes,
+// which vary between "not found" and "access denied".
+fn classify_taskkill(stdout: &str, stderr: &str, success: bool) -> TaskkillOutcome {
+    if success {
+        return TaskkillOutcome::Terminated;
+    }
+    let combined = format!("{stdout}\n{stderr}").to_ascii_lowercase();
+    if combined.contains("not found")
+        || combined.contains("not running")
+        || combined.contains("could not find")
+        || combined.contains("没有找到")
+        || combined.contains("找不到")
+    {
+        return TaskkillOutcome::NotFound;
+    }
+    if combined.contains("access is denied") || combined.contains("拒绝访问") {
+        return TaskkillOutcome::Failed(
+            "access denied (target may run at a higher integrity level or require elevation)"
+                .to_string(),
+        );
+    }
+    let reason = stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("taskkill failed")
+        .to_string();
+    TaskkillOutcome::Failed(reason)
+}
+
+fn taskkill_capture(pid: u32, tree: bool) -> TaskkillOutcome {
+    let mut command = StdCommand::new("taskkill.exe");
+    command.arg("/PID").arg(pid.to_string());
+    if tree {
+        command.arg("/T");
+    }
+    command.arg("/F").creation_flags(CREATE_NO_WINDOW);
+    match command.output() {
+        Ok(output) => classify_taskkill(
+            &String::from_utf8_lossy(&output.stdout),
+            &String::from_utf8_lossy(&output.stderr),
+            output.status.success(),
+        ),
+        Err(error) => TaskkillOutcome::Failed(error.to_string()),
+    }
+}
+
 async fn read_tail(path: &Path, max_chars: usize) -> String {
     tokio::fs::read_to_string(path)
         .await
@@ -1649,4 +1942,64 @@ fn unix_millis() -> u128 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |value| value.as_millis())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_quoted_tasklist_rows_with_spaces_and_missing_fields() {
+        let sample = "\"Tabbit Browser.exe\",\"6988\",\"Console\",\"1\",\"123,456 K\"\n\
+                      \"svchost.exe\",\"1024\",\"Services\",\"0\",\"8,000 K\"\n\
+                      \r\n\
+                      \"weird.exe\",\"notanumber\",\"Console\",\"1\",\"0 K\"";
+        let rows = parse_tasklist_csv(sample);
+        assert_eq!(rows.len(), 2, "the row with a non-numeric PID is skipped");
+        assert_eq!(rows[0].name, "Tabbit Browser.exe");
+        assert_eq!(rows[0].pid, 6988);
+        assert_eq!(rows[0].session_id, Some(1));
+        assert_eq!(rows[1].name, "svchost.exe");
+        assert_eq!(rows[1].pid, 1024);
+    }
+
+    #[test]
+    fn csv_row_keeps_commas_inside_quotes() {
+        let fields = parse_csv_row("\"a,b\",\"12\",\"Console\",\"1\",\"1,024 K\"");
+        assert_eq!(fields[0], "a,b");
+        assert_eq!(fields[1], "12");
+        assert_eq!(fields[4], "1,024 K");
+    }
+
+    #[test]
+    fn classifies_taskkill_not_found() {
+        let out = classify_taskkill("", "ERROR: The process \"1234\" not found.", false);
+        assert!(matches!(out, TaskkillOutcome::NotFound));
+    }
+
+    #[test]
+    fn classifies_taskkill_access_denied() {
+        let out = classify_taskkill("", "ERROR: Access is denied.", false);
+        match out {
+            TaskkillOutcome::Failed(reason) => assert!(reason.contains("access denied")),
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classifies_taskkill_success() {
+        let out = classify_taskkill("SUCCESS: ...", "", true);
+        assert!(matches!(out, TaskkillOutcome::Terminated));
+    }
+
+    #[test]
+    fn classifies_unknown_failure_with_stderr_reason() {
+        let out = classify_taskkill("", "ERROR: something odd happened", false);
+        match out {
+            TaskkillOutcome::Failed(reason) => {
+                assert!(reason.contains("something odd"))
+            }
+            other => panic!("expected Failed, got {other:?}"),
+        }
+    }
 }
