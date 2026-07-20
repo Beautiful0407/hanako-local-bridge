@@ -1064,7 +1064,11 @@ fn offline_status(
 }
 
 fn adapt_tool(mut tool: Value) -> Value {
-    let object = tool.as_object_mut().unwrap_or_else(|| unreachable!());
+    // A malformed (non-object) tool entry from a downstream device must not
+    // crash tool refresh; leave it untouched rather than panicking.
+    let Some(object) = tool.as_object_mut() else {
+        return tool;
+    };
     let description = object
         .get("description")
         .and_then(Value::as_str)
@@ -1078,15 +1082,19 @@ fn adapt_tool(mut tool: Value) -> Value {
     let input = object
         .entry("inputSchema")
         .or_insert_with(|| json!({ "type": "object", "properties": {} }));
-    let properties = input
-        .as_object_mut()
-        .and_then(|input| {
-            input
-                .entry("properties")
-                .or_insert_with(|| json!({}))
-                .as_object_mut()
-        })
-        .unwrap();
+    // If a device advertised a non-object inputSchema, replace it with a valid
+    // one rather than unwrapping into a panic.
+    if !input.is_object() {
+        *input = json!({ "type": "object", "properties": {} });
+    }
+    let Some(properties) = input.as_object_mut().and_then(|input| {
+        input
+            .entry("properties")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+    }) else {
+        return tool;
+    };
     properties.insert(
         "deviceId".to_string(),
         json!({
@@ -1275,5 +1283,132 @@ mod tests {
         }));
         assert!(tool["inputSchema"]["properties"]["deviceId"].is_object());
         assert!(tool["inputSchema"]["properties"]["queueIfOffline"].is_object());
+    }
+
+    #[test]
+    fn adapt_tool_leaves_non_object_values_unchanged() {
+        // A downstream device returning a malformed (non-object) tool entry must
+        // not crash tool refresh. Previously this hit unreachable!().
+        assert_eq!(adapt_tool(json!("not a tool")), json!("not a tool"));
+        assert_eq!(adapt_tool(json!(42)), json!(42));
+    }
+
+    #[test]
+    fn adapt_tool_synthesizes_input_schema_when_missing() {
+        let tool = adapt_tool(json!({ "name": "x", "description": "d" }));
+        assert!(tool["inputSchema"]["properties"]["deviceId"].is_object());
+    }
+
+    // Build a RouterService from an on-disk config fixture so private async
+    // methods (select_device, queue_call) can be exercised in-crate.
+    async fn service_with_devices(devices: Value) -> RouterService {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("devices.json");
+        let config = json!({ "schemaVersion": 1, "devices": devices });
+        std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let paths = RouterPaths {
+            config: config_path,
+            cache: dir.path().join("tools-cache.json"),
+            queue: dir.path().join("offline-queue.json"),
+        };
+        // Keep the tempdir alive for the duration by leaking it into the paths;
+        // the OS cleans %TEMP% and each test uses a unique dir.
+        std::mem::forget(dir);
+        RouterService::load(paths, Duration::from_secs(30))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn select_device_requires_id_when_no_devices_configured() {
+        let service = service_with_devices(json!([])).await;
+        let err = service.select_device(&json!({})).await.unwrap_err();
+        assert_eq!(err.code, "device_required");
+    }
+
+    #[tokio::test]
+    async fn select_device_requires_id_with_multiple_devices_and_no_hint() {
+        let service = service_with_devices(json!([
+            { "id": "a", "name": "A", "url": "http://127.0.0.1:1/mcp", "healthUrl": "http://127.0.0.1:1/health" },
+            { "id": "b", "name": "B", "url": "http://127.0.0.1:2/mcp", "healthUrl": "http://127.0.0.1:2/health" }
+        ]))
+        .await;
+        let err = service.select_device(&json!({})).await.unwrap_err();
+        assert_eq!(err.code, "device_required");
+    }
+
+    #[tokio::test]
+    async fn select_device_rejects_conflicting_targets() {
+        let service = service_with_devices(json!([
+            { "id": "a", "name": "A", "url": "http://127.0.0.1:1/mcp", "healthUrl": "http://127.0.0.1:1/health" }
+        ]))
+        .await;
+        let err = service
+            .select_device(&json!({ "deviceId": "a", "path": "device://b/C:/x.txt" }))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "cross_device_operation_not_supported");
+    }
+
+    #[tokio::test]
+    async fn select_device_rejects_unknown_id() {
+        let service = service_with_devices(json!([
+            { "id": "a", "name": "A", "url": "http://127.0.0.1:1/mcp", "healthUrl": "http://127.0.0.1:1/health" }
+        ]))
+        .await;
+        let err = service
+            .select_device(&json!({ "deviceId": "ghost" }))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "device_not_found");
+    }
+
+    #[tokio::test]
+    async fn queue_call_strips_routing_fields() {
+        let service = service_with_devices(json!([])).await;
+        let item = service
+            .queue_call(
+                "a",
+                "local_fs.read_text",
+                json!({ "path": "device://a/C:/x.txt", "deviceId": "a", "queueIfOffline": true }),
+            )
+            .await;
+        assert!(item.arguments.get("deviceId").is_none());
+        assert!(item.arguments.get("queueIfOffline").is_none());
+        assert_eq!(item.arguments["path"], "device://a/C:/x.txt");
+        assert_eq!(item.status, "queued");
+    }
+
+    #[tokio::test]
+    async fn queue_cap_evicts_terminal_items_when_over_limit() {
+        let service = service_with_devices(json!([])).await;
+        // Pre-fill with 1000 completed items, then add one more: a terminal item
+        // should be evicted so the queue stays at 1000.
+        {
+            let mut state = service.state.write().await;
+            for index in 0..1000 {
+                state.queue.items.push(QueueItem {
+                    id: format!("done_{index}"),
+                    device_id: "a".to_string(),
+                    tool: "t".to_string(),
+                    arguments: json!({}),
+                    status: "completed".to_string(),
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                    started_at: None,
+                    finished_at: None,
+                    attempts: 0,
+                    error: String::new(),
+                    response: None,
+                });
+            }
+        }
+        service.queue_call("a", "t", json!({})).await;
+        let state = service.state.read().await;
+        assert_eq!(
+            state.queue.items.len(),
+            1000,
+            "a terminal item is evicted to make room"
+        );
     }
 }
