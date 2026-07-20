@@ -4,11 +4,11 @@
 
 ## Repository
 
-- Captured: `2026-07-20T23:09:27.5283607+08:00`
+- Captured: `2026-07-20T23:33:38.6738957+08:00`
 - Root: `C:\Users\30456\Documents\hanako 开发\hanako-mcp-publish-20260717`
 - Remote: `https://github.com/Beautiful0407/hanako--MCP-.git`
 - Branch: `main`
-- Latest tag: `v2.0.0-alpha.11`
+- Latest tag: `v2.0.0-alpha.12`
 
 Live commit and dirty state are reported by `scripts/inspect-environment.ps1` and are intentionally not stored in this tracked snapshot.
 
@@ -40,17 +40,17 @@ Live commit and dirty state are reported by `scripts/inspect-environment.ps1` an
 
 - Install root: `C:\Users\30456\AppData\Local\HanakoLocalBridge`
 - Installed: `True`
-- Version: `2.0.0-alpha.10`
+- Version: `2.0.0-alpha.12`
 - Health 8787: `True`
 - Health 8788: `True`
 - Cloud: `active`
 - Cloud last error: ``
-- Cloud last connected: `2026-07-20T15:08:45.750296800+00:00`
-- Cloud last seen: `2026-07-20T15:09:11.012775200+00:00`
+- Cloud last connected: `2026-07-20T15:29:16.792564500+00:00`
+- Cloud last seen: `2026-07-20T15:33:26.860702+00:00`
 - Device ID: `laptop-hl78935t`
-- Bridge PID: `47836`
+- Bridge PID: `46816`
 - Main window handle: `0`
-- Manager count: `1`
+- Manager count: `0`
 - Task exists/state: `True` / `Running`
 - Task last result: `2147946720`
 - Task hidden: `True`
