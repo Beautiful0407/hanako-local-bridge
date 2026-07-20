@@ -1193,6 +1193,67 @@ mod tests {
     }
 
     #[test]
+    fn remote_download_succeeds_when_full_body_arrives_before_an_unclean_close() {
+        // Regression: a peer that sends every payload byte but aborts the
+        // connection without a clean stream end (e.g. TLS close_notify missing,
+        // observed as "peer closed connection without sending TLS close_notify")
+        // must still count as a successful download once the expected size is on
+        // disk, rather than failing the whole update.
+        let payload = Arc::new(
+            (0..256 * 1024)
+                .map(|index| (index % 251) as u8)
+                .collect::<Vec<_>>(),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server_payload = Arc::clone(&payload);
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.ends_with(b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+            }
+            // Announce one more byte than we actually deliver. The client
+            // receives every byte of the real payload, then observes the stream
+            // end before the promised length is reached -- the same shape as an
+            // unclean TLS close after the final data byte. std::io::copy returns
+            // an error, but the expected number of bytes is already on disk.
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                server_payload.len() + 1
+            )
+            .unwrap();
+            stream.write_all(&server_payload).unwrap();
+            stream.flush().unwrap();
+            drop(stream);
+        });
+
+        let temp = tempdir().unwrap();
+        let destination = temp.path().join("package.zip");
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(2))
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        download_remote_resource(
+            &client,
+            &Url::parse(&format!("http://{address}/package.zip")).unwrap(),
+            &destination,
+            Some(payload.len() as u64),
+            1,
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        server.join().unwrap();
+        assert_eq!(fs::read(destination).unwrap(), *payload);
+    }
+
+    #[test]
     #[ignore = "requires explicit remote URL, size, and SHA256 environment variables"]
     fn remote_release_download_probe() {
         let source = env::var("HANAKO_REMOTE_DOWNLOAD_PROBE_URL").unwrap();
