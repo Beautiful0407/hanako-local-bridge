@@ -522,18 +522,7 @@ impl RouterService {
         let queue = {
             let mut state = self.state.write().await;
             state.queue.items.push(item.clone());
-            if state.queue.items.len() > 1000 {
-                while state.queue.items.len() > 1000 {
-                    let removable = state.queue.items.iter().position(|entry| {
-                        matches!(entry.status.as_str(), "completed" | "failed" | "cancelled")
-                    });
-                    if let Some(index) = removable {
-                        state.queue.items.remove(index);
-                    } else {
-                        break;
-                    }
-                }
-            }
+            enforce_queue_cap(&mut state.queue.items, QUEUE_CAPACITY);
             state.queue.clone()
         };
         let _ = write_json_atomic(&self.paths.queue, &queue);
@@ -1035,6 +1024,27 @@ fn allocate_remote_port(
     (min..=max).find(|port| !used.contains(port))
 }
 
+const QUEUE_CAPACITY: usize = 1000;
+
+// Keep the offline queue bounded. Prefer evicting terminal items (their work
+// is done); if the queue is still over capacity because every item is still
+// queued/running (e.g. a device stays offline while queueIfOffline calls pile
+// up), evict the oldest non-terminal items so the queue can never grow without
+// bound. The most recently pushed item is at the tail and is evicted last.
+fn enforce_queue_cap(items: &mut Vec<QueueItem>, capacity: usize) {
+    while items.len() > capacity {
+        let terminal = items
+            .iter()
+            .position(|entry| is_terminal_status(&entry.status));
+        let index = terminal.unwrap_or(0);
+        items.remove(index);
+    }
+}
+
+fn is_terminal_status(status: &str) -> bool {
+    matches!(status, "completed" | "failed" | "cancelled")
+}
+
 fn offline_status(
     device: &DeviceConfig,
     previous: Option<DeviceStatus>,
@@ -1410,5 +1420,78 @@ mod tests {
             1000,
             "a terminal item is evicted to make room"
         );
+    }
+
+    #[tokio::test]
+    async fn queue_stays_bounded_when_all_items_are_queued() {
+        // Regression: an all-queued backlog (offline device + repeated
+        // queueIfOffline) used to grow unbounded because the cap only evicted
+        // terminal items. It must now stay at capacity by evicting the oldest.
+        let service = service_with_devices(json!([])).await;
+        {
+            let mut state = service.state.write().await;
+            for index in 0..1000 {
+                state.queue.items.push(QueueItem {
+                    id: format!("queued_{index}"),
+                    device_id: "a".to_string(),
+                    tool: "t".to_string(),
+                    arguments: json!({}),
+                    status: "queued".to_string(),
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                    started_at: None,
+                    finished_at: None,
+                    attempts: 0,
+                    error: String::new(),
+                    response: None,
+                });
+            }
+        }
+        let newest = service
+            .queue_call("a", "t", json!({ "marker": "newest" }))
+            .await;
+        let state = service.state.read().await;
+        assert_eq!(
+            state.queue.items.len(),
+            1000,
+            "queue never exceeds capacity"
+        );
+        // The oldest queued item was evicted; the just-pushed item survives.
+        assert!(state.queue.items.iter().any(|item| item.id == newest.id));
+        assert!(
+            !state.queue.items.iter().any(|item| item.id == "queued_0"),
+            "the oldest queued item is evicted"
+        );
+    }
+
+    #[test]
+    fn enforce_queue_cap_prefers_terminal_items() {
+        let mut items = vec![
+            make_item("q1", "queued"),
+            make_item("done", "completed"),
+            make_item("q2", "queued"),
+        ];
+        enforce_queue_cap(&mut items, 2);
+        // The terminal item is removed, both queued items survive.
+        assert!(items.iter().any(|i| i.id == "q1"));
+        assert!(items.iter().any(|i| i.id == "q2"));
+        assert!(!items.iter().any(|i| i.id == "done"));
+    }
+
+    fn make_item(id: &str, status: &str) -> QueueItem {
+        QueueItem {
+            id: id.to_string(),
+            device_id: "a".to_string(),
+            tool: "t".to_string(),
+            arguments: json!({}),
+            status: status.to_string(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            started_at: None,
+            finished_at: None,
+            attempts: 0,
+            error: String::new(),
+            response: None,
+        }
     }
 }
