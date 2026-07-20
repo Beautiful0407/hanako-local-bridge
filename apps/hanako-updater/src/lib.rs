@@ -608,10 +608,10 @@ pub fn start_installed_service(install_root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn launch_installed_manager(install_root: &Path) {
-    let manager = install_root.join("hanako-manager.exe");
-    if manager.is_file() {
-        let _ = configure_detached(&mut Command::new(manager)).spawn();
+pub fn launch_product_entry(install_root: &Path) {
+    let product_entry = install_root.join("hanako-bridge.exe");
+    if product_entry.is_file() {
+        let _ = configure_detached(&mut Command::new(product_entry)).spawn();
     }
 }
 

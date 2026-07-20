@@ -9,7 +9,7 @@ const projectDir = path.resolve(__dirname, "..");
 const bridgeExe =
   process.env.HANAKO_RUST_BRIDGE_EXE ||
   path.join(projectDir, "target", "debug", "hanako-bridge.exe");
-const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.9";
+const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.10";
 
 async function checkedFetch(label, url, options) {
   try {
@@ -120,7 +120,7 @@ async function run() {
   );
 
   const output = { stdout: "", stderr: "" };
-  const child = spawn(bridgeExe, [], {
+  const child = spawn(bridgeExe, ["--service"], {
     env: {
       ...process.env,
       HANA_LOCAL_BRIDGE_CONFIG: configPath,

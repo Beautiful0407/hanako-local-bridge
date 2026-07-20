@@ -9,7 +9,7 @@ const bridgeExe = path.join(projectDir, "target", "debug", "hanako-bridge.exe");
 
 function startBridge(configPath) {
   const output = { stdout: "", stderr: "" };
-  const child = spawn(bridgeExe, [], {
+  const child = spawn(bridgeExe, ["--service"], {
     env: {
       ...process.env,
       HANA_LOCAL_BRIDGE_CONFIG: configPath,

@@ -21,11 +21,30 @@ Hanako Local Bridge lets cloud Hana use the currently selected Windows computer 
 - multi-device selection and offline queueing;
 - local diagnostics, settings, repair and signed updates.
 
-The project has three separately deployed surfaces:
+Hanako Local Bridge is one Rust product. It has one user-facing identity, one Windows installer,
+one manager entry, one configuration model, one product version, one update policy and one
+diagnostic/repair experience. New product behavior is implemented only in Rust.
+
+The product contains several runtime roles:
 
 ```text
-Windows Local Bridge
-  -> local MCP + manager + updater + installer
+Hanako Local Bridge product
+  -> Windows background Bridge role
+  -> Windows Manager role
+  -> hidden maintenance/update role
+  -> installer/bootstrap artifact
+  -> cloud gateway and Linux Device Router role
+```
+
+These roles are not separate products. They must not acquire separate user accounts, settings
+stores, installers, version schemes, release channels or management applications.
+
+The runtime is deployed on both Windows and Linux because the responsibilities and operating
+systems differ:
+
+```text
+Windows installation
+  -> local MCP + manager + maintenance helper
 
 Cloud Hana LocalBridgeGateway
   -> WebSocket authentication and cloud-to-device forwarding
@@ -34,7 +53,15 @@ Linux Device Router
   -> MCP device selection, token forwarding and offline queue
 ```
 
-Do not treat a successful health check on one surface as proof that the whole chain works.
+Multiple internal processes are allowed where they provide real reliability:
+
+- the background Bridge must survive closing the Manager;
+- an updater must be able to replace a running Bridge;
+- the Linux router cannot be the same operating-system binary as the Windows desktop runtime.
+
+This is an implementation boundary, not a product boundary. Users manage Hanako Local Bridge as
+one program. Do not treat a successful health check on one runtime role as proof that the whole
+chain works.
 
 ## Runtime Topology
 
@@ -67,7 +94,17 @@ GUI subsystem; Debug builds remain console applications. The task combines:
 The repeating trigger covers external termination results that Task Scheduler does not recover
 through `RestartOnFailure`.
 
+Launching `hanako-bridge.exe` without arguments is the user-facing product entry and opens the
+internal single-instance Manager. `--status`, `--repair` and `--doctor` are direct Rust maintenance
+roles. Desktop and Start menu shortcuts must target `hanako-bridge.exe`, never the internal Manager
+binary.
+
 ## Rust Ownership Map
+
+The Cargo workspace is an internal modularization mechanism. `apps/*` names build targets and
+runtime roles, not standalone products. Shared product contracts belong in
+`crates/hanako-bridge-core`; user-facing configuration, versioning and release behavior must remain
+coherent across all targets.
 
 ### `crates/hanako-bridge-core`
 
@@ -244,7 +281,12 @@ or cleanup logic changes.
 - Add optional request fields with backward-compatible defaults.
 - Preserve UTF-8, UTF-16LE, UTF-16BE and BOM behavior.
 - Use atomic file replacement and precondition hashes for concurrent writes.
-- Keep Node/PowerShell stable clients compatible with cloud routing during Rust migration.
+- Develop all new product functionality in Rust.
+- Keep Node/PowerShell artifacts only as migration inputs, compatibility fixtures and rollback
+  references until their removal gates are satisfied.
+- Keep one product version and coordinated compatibility matrix for Windows and cloud runtime
+  roles. Platform-specific build numbers may be recorded internally but must not become separate
+  user-facing product lines.
 - Keep Alpha and stable update feeds isolated.
 
 ## Security Boundaries
@@ -263,10 +305,10 @@ or cleanup logic changes.
 
 Legacy Node, PowerShell, VBS and WinUI files remain for:
 
-- stable `1.4.9` maintenance;
 - migration fixtures;
 - overwrite takeover testing;
 - rollback and compatibility reference.
 
-Do not remove them as cleanup during Rust feature work. Remove legacy code only through a separate,
-versioned migration with rollback evidence.
+Do not add features to legacy implementations and do not use them as the primary fix path. Remove
+legacy code only through a versioned Rust migration with rollback evidence, after installed stable
+clients can be upgraded without losing configuration, identity, data or service recovery.

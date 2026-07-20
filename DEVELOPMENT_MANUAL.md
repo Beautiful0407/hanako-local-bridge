@@ -1,5 +1,17 @@
 # Hanako 本地文件与执行桥 MCP 开发维护手册
 
+## 产品开发硬规则
+
+从 2026-07-20 起，Hanako Local Bridge 后续产品功能只在 Rust 工作区中开发。
+
+- 产品只有一个：`Hanako Local Bridge`。
+- 用户只管理一个安装包、一个开始菜单/托盘入口、一份配置、一个版本号、一条更新渠道和一套诊断修复流程。
+- `hanako-bridge`、`hanako-manager`、`hanako-maintenance`、`hanako-bootstrap`、`hanako-device-router` 是同一产品的内部模块、构建目标或运行角色，不得演变为独立产品。
+- 内部可以保留多个进程：后台 Bridge 必须独立常驻，维护助手必须能替换运行中的文件，Linux Router 必须在服务器操作系统上运行。多进程不等于多产品。
+- 搜索、历史、事务、同步和 Cognitive Adapter 都继续放在同一仓库、同一协议体系和同一管理界面下，以分阶段模块方式交付。
+- Node、PowerShell、VBS 和旧 WinUI 代码只用于迁移、覆盖安装、兼容测试和回滚参照，不再新增功能，也不作为默认修复落点。
+- 新能力优先下沉到 `crates/hanako-bridge-core`，再由 Windows、云端和管理界面角色复用，避免不同运行目标各自实现同一套业务规则。
+
 ## Rust 2.0 Alpha 开发入口
 
 Rust 工作区位于：
@@ -20,9 +32,9 @@ tests/rust-installer-smoke.ps1
 tests/rust-update-smoke.ps1
 ```
 
-`hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载管理界面；`hanako-maintenance` 负责签名下载、事务更新和回滚；`hanako-bootstrap` 负责内嵌安装、快捷方式和卸载；`hanako-device-router` 负责 Linux 多设备路由和离线队列。
+`hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载唯一的用户管理入口；`hanako-maintenance` 负责隐藏执行签名下载、事务更新和回滚；`hanako-bootstrap` 只作为统一安装包的构建/安装角色；`hanako-device-router` 负责同一产品在 Linux 云端的多设备路由和离线队列。
 
-当前 Windows Rust 版本为 `2.0.0-alpha.9`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 8 将 Release `hanako-bridge.exe` 编译为 Windows GUI 子系统，计划任务启动时不会再出现控制台窗口；Alpha 9 在登录触发之外增加每分钟周期触发，并继续使用 `IgnoreNew` 保证正常运行时只有一个 Bridge。这样既能处理正常非零退出，也能覆盖外部强制终止返回 `0xFFFFFFFF`、`RestartOnFailure` 未触发的情况。Debug 构建仍保留控制台，服务命令的重定向 JSON 输出也保持可用。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务；Windows 稳定渠道仍为 `1.4.9`。
+当前 Windows Rust 版本为 `2.0.0-alpha.10`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 10 将 Release `hanako-bridge.exe` 设为统一用户入口：无参数启动内部单实例托盘管理器，`--service` 运行后台角色，`--status`、`--repair` 和 `--doctor` 执行纯 Rust 维护命令。Alpha 8 的 Windows GUI 子系统和 Alpha 9 的每分钟周期恢复继续保留。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务；Windows 稳定渠道仍为 `1.4.9`。
 
 完整质量门：
 

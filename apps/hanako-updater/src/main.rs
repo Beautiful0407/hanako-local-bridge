@@ -17,8 +17,8 @@ use hanako_bridge_core::{
     },
 };
 use hanako_maintenance::{
-    PayloadTransaction, build_release_package, check_update, launch_installed_manager,
-    prepare_update, start_installed_service, stop_installed_service_and_processes,
+    PayloadTransaction, build_release_package, check_update, launch_product_entry, prepare_update,
+    start_installed_service, stop_installed_service_and_processes,
 };
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -244,7 +244,7 @@ fn run_worker(arguments: &[std::ffi::OsString]) -> anyhow::Result<()> {
             append_log(&log_path, "Update completed successfully.\n")?;
             write_update_state(&state_path, &state)?;
             if !test_mode {
-                launch_installed_manager(&install_root);
+                launch_product_entry(&install_root);
             }
         }
         Err(error) => {

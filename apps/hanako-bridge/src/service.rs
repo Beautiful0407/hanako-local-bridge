@@ -1,5 +1,7 @@
 use std::{
-    env, fs,
+    env,
+    ffi::OsString,
+    fs,
     net::{Ipv4Addr, TcpListener},
     os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
@@ -9,8 +11,15 @@ use std::{
 
 use hanako_bridge_core::RuntimeConfig;
 use serde::Serialize;
+use serde_json::json;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RequestedServiceCommand {
+    command: String,
+    command_index: Option<usize>,
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,16 +33,10 @@ pub struct ServiceStatus {
 
 pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
     let arguments = env::args_os().collect::<Vec<_>>();
-    let Some(index) = arguments
-        .iter()
-        .position(|argument| argument == "--service-command")
-    else {
+    let Some(request) = requested_service_command(&arguments) else {
         return Ok(false);
     };
-    let command = arguments
-        .get(index + 1)
-        .and_then(|value| value.to_str())
-        .unwrap_or("");
+    let command = request.command.as_str();
     let install_dir = env::current_exe()?
         .parent()
         .map(Path::to_path_buf)
@@ -69,8 +72,9 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
             print_json(&service_status(&runtime, &task_name).await?)?;
         }
         "restart-worker" => {
-            let wait_pid = arguments
-                .get(index + 2)
+            let wait_pid = request
+                .command_index
+                .and_then(|index| arguments.get(index + 2))
                 .and_then(|value| value.to_str())
                 .and_then(|value| value.parse::<u32>().ok());
             let result = async {
@@ -86,8 +90,9 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
             result?;
         }
         "deferred-action" => {
-            let action = arguments
-                .get(index + 2)
+            let action = request
+                .command_index
+                .and_then(|index| arguments.get(index + 2))
                 .and_then(|value| value.to_str())
                 .unwrap_or("");
             tokio::time::sleep(Duration::from_millis(800)).await;
@@ -107,9 +112,54 @@ pub async fn run_service_command_if_requested() -> anyhow::Result<bool> {
             result?;
         }
         "status" => print_json(&service_status(&runtime, &task_name).await?)?,
+        "doctor" => {
+            let status = service_status(&runtime, &task_name).await?;
+            print_json(&json!({
+                "ok": status.task_exists && status.health_ok,
+                "runtime": "rust",
+                "version": env!("CARGO_PKG_VERSION"),
+                "installDir": runtime.install_dir,
+                "configPath": runtime.config_path,
+                "service": status,
+                "ports": {
+                    "mcp": runtime.config.filesystem.port,
+                    "manager": runtime.config.filesystem.approval_port
+                },
+                "cloudEnabled": runtime.config.cloud.enabled
+            }))?;
+        }
         _ => anyhow::bail!("unknown service command: {command}"),
     }
     Ok(true)
+}
+
+fn requested_service_command(arguments: &[OsString]) -> Option<RequestedServiceCommand> {
+    if let Some(index) = arguments
+        .iter()
+        .position(|argument| argument == "--service-command")
+    {
+        return Some(RequestedServiceCommand {
+            command: arguments
+                .get(index + 1)
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_string(),
+            command_index: Some(index),
+        });
+    }
+    for (alias, command) in [
+        ("--status", "status"),
+        ("--repair", "repair"),
+        ("--doctor", "doctor"),
+    ] {
+        if arguments.iter().any(|argument| argument == alias) {
+            return Some(RequestedServiceCommand {
+                command: command.to_string(),
+                command_index: None,
+            });
+        }
+    }
+    None
 }
 
 pub fn spawn_deferred_action(runtime: &RuntimeConfig, action: &str) -> anyhow::Result<()> {
@@ -630,5 +680,22 @@ mod tests {
         let started = Instant::now();
         wait_for_ports_released(&[port], Duration::from_secs(2)).unwrap();
         assert!(started.elapsed() >= Duration::from_millis(150));
+    }
+
+    #[test]
+    fn top_level_product_aliases_map_to_service_commands() {
+        for (alias, expected) in [
+            ("--status", "status"),
+            ("--repair", "repair"),
+            ("--doctor", "doctor"),
+        ] {
+            let arguments = vec![OsString::from("hanako-bridge.exe"), OsString::from(alias)];
+            assert_eq!(
+                requested_service_command(&arguments)
+                    .map(|request| request.command)
+                    .as_deref(),
+                Some(expected)
+            );
+        }
     }
 }

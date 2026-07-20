@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.0-alpha.10 - 2026-07-20
+
+- Makes `hanako-bridge.exe` the single user-facing Windows product entry.
+- Opens the Rust tray manager when the product entry is launched without arguments, while `--service` remains the explicit background-service role.
+- Adds top-level `--status`, `--repair`, and `--doctor` commands without routing product maintenance through legacy scripts.
+- Points desktop, Start menu, uninstall display-icon, post-install launch, and post-update relaunch behavior at the unified product entry.
+- Keeps `hanako-manager.exe` as an internal single-instance UI role and `hanako-maintenance.exe` as the hidden self-update role.
+- Extends integration and installer coverage for explicit service startup, shortcut targets, repeated product launches, background survival, and Alpha 9-to-Alpha 10 signed updates.
+
 ## 2.0.0-alpha.9 - 2026-07-19
 
 - Adds a one-minute repeating Task Scheduler trigger to the existing logon trigger.

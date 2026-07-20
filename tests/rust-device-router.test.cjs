@@ -23,9 +23,9 @@ async function waitForHealth(url, child, output) {
   throw new Error(`timed out waiting for ${url}\n${output.stderr}`);
 }
 
-function startProcess(file, env) {
+function startProcess(file, args, env) {
   const output = { stdout: "", stderr: "" };
-  const child = spawn(file, [], {
+  const child = spawn(file, args, {
     env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -140,7 +140,7 @@ async function run() {
   let device;
   let router;
   try {
-    device = startProcess(bridgeExe, {
+    device = startProcess(bridgeExe, ["--service"], {
       ...process.env,
       HANA_LOCAL_BRIDGE_CONFIG: bridgeConfig,
       LOCAL_AGENT_TRUST_MODE: "full",
@@ -153,7 +153,7 @@ async function run() {
     configuredRouter.devices[0].mcpToken = mcpToken;
     await fsp.writeFile(routerConfig, `${JSON.stringify(configuredRouter, null, 2)}\n`, "utf8");
 
-    router = startProcess(routerExe, {
+    router = startProcess(routerExe, [], {
       ...process.env,
       HANA_DEVICE_ROUTER_CONFIG: routerConfig,
       HANA_DEVICE_ROUTER_CACHE: cache,
@@ -199,7 +199,7 @@ async function run() {
     }));
     assert.equal(queued.status, "queued");
 
-    device = startProcess(bridgeExe, {
+    device = startProcess(bridgeExe, ["--service"], {
       ...process.env,
       HANA_LOCAL_BRIDGE_CONFIG: bridgeConfig,
       LOCAL_AGENT_TRUST_MODE: "full",

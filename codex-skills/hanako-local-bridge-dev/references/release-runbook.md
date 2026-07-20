@@ -162,8 +162,9 @@ Installer smoke must verify:
 - installed PE subsystem is Windows GUI;
 - first install and overwrite;
 - data/log/unknown-file preservation;
+- desktop and Start menu shortcuts target `hanako-bridge.exe`;
 - manager repair;
-- manager single instance;
+- repeated unified product launches keep one internal Manager instance;
 - closing manager leaves Bridge healthy;
 - force-terminated Bridge returns as a different PID without a visible window;
 - uninstall removes task, registry entry and install tree.

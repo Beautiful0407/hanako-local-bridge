@@ -5,6 +5,7 @@ mod cloud;
 mod execution;
 mod manager;
 mod mcp;
+mod product;
 mod service;
 mod state;
 
@@ -420,6 +421,9 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     if execution::run_worker_if_requested().await? {
+        return Ok(());
+    }
+    if product::launch_manager_if_requested()? {
         return Ok(());
     }
     let install_dir = env::current_exe()

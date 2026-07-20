@@ -2,6 +2,22 @@
 
 Manual revision: 1
 
+## Non-negotiable Product Direction
+
+- Develop new Hanako Local Bridge product functionality only in Rust under `apps/` and `crates/`.
+- Treat Hanako Local Bridge as one product with one Windows installer, one manager entry, one
+  configuration model, one product version, one update policy and one diagnostic/repair flow.
+- Treat Bridge, Manager, Maintenance, Bootstrap and Device Router as internal modules, build targets
+  or runtime roles. They are not independent products.
+- Multiple internal processes are allowed for background survival, self-update replacement,
+  operating-system separation and fault isolation. They must remain invisible as separate products
+  to the user.
+- Keep search, transactions, history, sync and cognitive event support in the same repository,
+  protocol family and management experience. Separate RFCs or milestones do not create separate
+  products.
+- Keep legacy Node, PowerShell, VBS and WinUI code only for migration, compatibility, overwrite
+  takeover and rollback tests. Do not add product features to legacy implementations.
+
 ## Contents
 
 1. Maintenance model

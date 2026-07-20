@@ -93,8 +93,14 @@ config.json SHA256 未变化
 
 ## Engineering Rules
 
-- 优先维护 Rust 实现：`apps/` 和 `crates/`。Legacy Node/PowerShell/WinUI 代码仍是
-  稳定版兼容和迁移基线，不要无关删除。
+- 后续产品功能只在 Rust 实现中开发：`apps/` 和 `crates/`。Legacy Node/PowerShell/VBS/WinUI
+  代码只作为迁移输入、兼容夹具、覆盖安装测试和回滚参照，不得继续承接新功能。
+- Hanako Local Bridge 是一个统一产品。Bridge、Manager、Maintenance、Bootstrap、Device
+  Router 只是内部模块、构建目标或运行角色，不得形成独立安装包、独立配置、独立版本线或独立管理产品。
+- 用户侧必须保持一个 Windows 安装包、一个管理入口、一份配置、一个产品版本、一条更新策略和一套
+  诊断修复流程。内部可为后台常驻、自更新替换、跨操作系统和故障隔离使用多个 Rust 进程。
+- 搜索、事务、历史、同步和 Cognitive Adapter 都在同一仓库、协议体系和管理界面中分阶段交付；
+  可以拆分内部模块、RFC 和里程碑，但不能拆成多个面向用户的产品。
 - 保持 MCP、文件格式、配置、设备身份和云端协议向后兼容。新增字段使用可选默认值，
   未知配置字段必须保留。
 - 安装、覆盖和在线更新必须保留：
