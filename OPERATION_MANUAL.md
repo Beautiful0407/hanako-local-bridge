@@ -1,6 +1,6 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## Rust 2.0.0-alpha.12 预发布状态
+## Rust 2.0.0-alpha.13 预发布状态
 
 Rust Alpha 12 使用 `hanako-bridge.exe` 作为统一入口，并让公网更新包支持中断重试和 Range 断点续传。在线更新仍会自动把旧桌面/开始菜单快捷方式和卸载图标迁移到统一入口。Manager、Maintenance 和 Installer 继续作为内部角色；云端路由器运行兼容的 Rust Alpha 2。关闭或退出管理器只关闭界面，后台任务继续运行；异常退出后最迟约一分钟自动恢复。
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.13 - 2026-07-21
+
+- Adds `local_exec.list_processes` and `local_exec.terminate` so the agent can observe and manage arbitrary processes, returning a structured result (terminated / failed-with-reason / protected / matched) instead of an opaque error. Protection is PID-aware: the bridge, its running job workers, and the manager/updater are never killed; a by-name match of more than one process requires confirmation.
+- Exposes lightweight runtime metrics (uptime, per-tool call counts, cloud reconnect count) on `/health` and the manager snapshot, using process-local counters with no external telemetry.
+- Bounds the device-router offline queue even when every item is still queued, evicting the oldest item so an offline device with repeated `queueIfOffline` calls can no longer grow the queue without limit.
+- Fixes a device-router panic where a downstream device returning a non-object tool entry (or inputSchema) could crash tool refresh; malformed entries are now left untouched.
+- Adds a regression test for accepting a fully-received update download that ends without a clean TLS close, plus device-router routing and queue coverage.
+
 ## 2.0.0-alpha.12 - 2026-07-20
 
 - Makes remote update package downloads retryable and resumable after interrupted response bodies.

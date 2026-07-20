@@ -65,7 +65,7 @@ offline：未连接，点击“检测并修复”
 
 ```text
 Windows Stable Bridge: 1.4.9
-Windows Rust Preview:  2.0.0-alpha.12
+Windows Rust Preview:  2.0.0-alpha.13
 Cloud Hana:            current deployed build
 Device Router:         2.0.0-alpha.2 (Rust)
 ```
