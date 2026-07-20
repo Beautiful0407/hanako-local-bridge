@@ -1,9 +1,12 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, Mutex as StdMutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use anyhow::Context;
@@ -53,6 +56,9 @@ pub struct AppState {
     path_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
     audit_lock: Mutex<()>,
     pub watches: Mutex<HashMap<String, WatchRecord>>,
+    started_at: String,
+    tool_calls: StdMutex<BTreeMap<String, u64>>,
+    cloud_reconnects: AtomicU64,
 }
 
 impl AppState {
@@ -116,6 +122,40 @@ impl AppState {
             path_locks: Mutex::new(HashMap::new()),
             audit_lock: Mutex::new(()),
             watches: Mutex::new(HashMap::new()),
+            started_at: Utc::now().to_rfc3339(),
+            tool_calls: StdMutex::new(BTreeMap::new()),
+            cloud_reconnects: AtomicU64::new(0),
+        })
+    }
+
+    pub fn record_tool_call(&self, tool: &str) {
+        if let Ok(mut counts) = self.tool_calls.lock() {
+            *counts.entry(tool.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    pub fn record_cloud_reconnect(&self) {
+        self.cloud_reconnects.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn metrics(&self) -> Value {
+        let tool_calls = self
+            .tool_calls
+            .lock()
+            .map(|counts| json!(&*counts))
+            .unwrap_or_else(|_| json!({}));
+        let uptime_seconds = chrono::DateTime::parse_from_rfc3339(&self.started_at)
+            .map(|start| {
+                (Utc::now() - start.with_timezone(&Utc))
+                    .num_seconds()
+                    .max(0)
+            })
+            .unwrap_or(0);
+        json!({
+            "startedAt": self.started_at,
+            "uptimeSeconds": uptime_seconds,
+            "toolCalls": tool_calls,
+            "cloudReconnects": self.cloud_reconnects.load(Ordering::Relaxed)
         })
     }
 

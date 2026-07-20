@@ -144,6 +144,7 @@ async fn snapshot(State(state): State<Arc<AppState>>, headers: HeaderMap) -> imp
                 "channel": update_channel,
                 "state": update_state
             },
+            "metrics": state.metrics(),
             "checks": checks,
             "settings": {
                 "deviceId": state.runtime.config.device.id,

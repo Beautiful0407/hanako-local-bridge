@@ -493,6 +493,7 @@ async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
                 .cloned()
                 .unwrap_or_else(|| json!({}));
             let started = Instant::now();
+            state.record_tool_call(name);
             let result = call_tool(&state, name, &arguments).await;
             let audit = match &result {
                 Ok(_) => json!({

@@ -78,7 +78,8 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             "pendingRequests": pending_requests,
             "pendingExecutions": pending_executions,
             "capabilities": state.capabilities(),
-            "cloud": cloud_identity
+            "cloud": cloud_identity,
+            "metrics": state.metrics()
         })),
     )
 }

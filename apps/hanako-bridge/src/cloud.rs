@@ -128,7 +128,16 @@ impl CloudConnector {
 
     async fn run(self: Arc<Self>) {
         let mut retry_seconds = self.config.reconnect_min_seconds.max(2);
+        let mut connect_count: u64 = 0;
         loop {
+            connect_count += 1;
+            // Count every connection attempt past the first as a reconnect, so
+            // the metric reflects instability rather than the initial connect.
+            if connect_count > 1
+                && let Some(app_state) = self.app_state.upgrade()
+            {
+                app_state.record_cloud_reconnect();
+            }
             {
                 let mut state = self.state.write().await;
                 state.status = "connecting".to_string();
