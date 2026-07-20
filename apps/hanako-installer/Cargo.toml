@@ -18,7 +18,6 @@ path = "src/lib.rs"
 anyhow.workspace = true
 hanako-bridge-core = { path = "../../crates/hanako-bridge-core" }
 hanako-maintenance = { path = "../hanako-updater" }
-mslnk.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

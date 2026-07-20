@@ -4,9 +4,9 @@
 
 ## Rust 2.0 Alpha 迁移
 
-仓库当前包含 `2.0.0-alpha.10` Rust 实现，用于替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket、后台任务、WebView2 托盘管理器、签名更新器、内嵌安装器和 Linux 多设备路由器。
+仓库当前包含 `2.0.0-alpha.11` Rust 实现，用于替换 Node.js、PowerShell watchdog 和自包含 WinUI/.NET 管理器。Rust 版本已经覆盖本地 MCP 服务、31 个文件与执行工具、云端 WebSocket、后台任务、WebView2 托盘管理器、签名更新器、内嵌安装器和 Linux 多设备路由器。
 
-`2.0.0-alpha.10` 将 `hanako-bridge.exe` 设为唯一用户入口：直接运行打开托盘管理界面，`--service` 启动后台 MCP，`--status`、`--repair` 和 `--doctor` 提供纯 Rust 维护命令。桌面、开始菜单、卸载图标、安装后启动和更新后重开全部指向该入口；Manager 与 Maintenance 继续作为内部角色。Alpha 10 已通过真实旧版接管、安装、覆盖、快捷方式目标、重复启动单实例、强制结束后周期恢复、Alpha 9 签名更新、任务恢复、审计和云端协议测试。云服务器的设备路由器仍运行兼容的 Rust Alpha 2，Windows 正式渠道仍为稳定版 `1.4.9`。
+`2.0.0-alpha.11` 延续 Alpha 10 的统一入口，并修复旧安装通过在线更新后快捷方式仍指向内部 Manager 的问题。桌面、开始菜单和卸载图标会在签名更新事务中统一迁移到 `hanako-bridge.exe`，失败时不会把部分更新误报为成功。Alpha 11 已覆盖真实旧版接管、安装、覆盖、快捷方式目标、重复启动单实例、强制结束后周期恢复、Alpha 10 签名更新、任务恢复、审计和云端协议测试。云服务器的设备路由器仍运行兼容的 Rust Alpha 2，Windows 正式渠道仍为稳定版 `1.4.9`。
 
 从现在起，Rust 工作区中的 Bridge、Manager、Maintenance、Bootstrap 和 Device Router 统一属于一个 Hanako Local Bridge 产品。它们可以因为后台常驻、自更新替换和 Windows/Linux 运行环境而使用多个内部进程或构建目标，但不分别面向用户安装、配置、升级或维护。
 
@@ -65,7 +65,7 @@ offline：未连接，点击“检测并修复”
 
 ```text
 Windows Stable Bridge: 1.4.9
-Windows Rust Preview:  2.0.0-alpha.10
+Windows Rust Preview:  2.0.0-alpha.11
 Cloud Hana:            current deployed build
 Device Router:         2.0.0-alpha.2 (Rust)
 ```

@@ -2,7 +2,7 @@
 
 稳定版本：`1.4.9`
 
-Rust 预发布版本：`2.0.0-alpha.10`
+Rust 预发布版本：`2.0.0-alpha.11`
 
 日期：`2026-07-20`
 
@@ -10,21 +10,21 @@ Rust 预发布版本：`2.0.0-alpha.10`
 
 ```text
 稳定渠道：1.4.9，继续用于现有 Windows 电脑
-Alpha 渠道：2.0.0-alpha.10，使用统一 Bridge 产品入口和内部 Rust Manager、Updater、Installer
+Alpha 渠道：2.0.0-alpha.11，在线更新会修复统一 Bridge 入口及其 Shell 集成
 云端设备路由器：2.0.0-alpha.2 Rust 版已经部署
 ```
 
 不要把 `target\release` 中的 EXE 手工覆盖到 `%LOCALAPPDATA%\HanakoLocalBridge`。首次安装或覆盖修复必须使用内嵌安装器或签名更新清单。
 
-Alpha 10 发布文件：
+Alpha 11 发布文件：
 
 ```text
-build\rust-release-alpha10\HanakoLocalBridge-Setup-2.0.0-alpha.10.exe
-build\rust-release-alpha10\HanakoLocalBridge-2.0.0-alpha.10-win-x64.zip
-build\rust-release-alpha10\update-manifest.json
+build\rust-release-alpha11\HanakoLocalBridge-Setup-2.0.0-alpha.11.exe
+build\rust-release-alpha11\HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip
+build\rust-release-alpha11\update-manifest.json
 ```
 
-Alpha 10 已验证：
+Alpha 11 已验证：
 
 ```text
 首次安装
@@ -39,7 +39,9 @@ Alpha 10 已验证：
 重复点击统一产品入口只保留一个管理器窗口
 卸载注册和后台卸载
 WebView2 退出延迟时重试清理安装目录
-Alpha 9 负载升级到 Alpha 10
+Alpha 10 负载升级到 Alpha 11
+在线更新把旧桌面、开始菜单快捷方式和卸载图标迁移到 `hanako-bridge.exe`
+在线 Shell 集成修复失败时更新进入失败和负载回滚路径
 Release Bridge 的 PE 子系统为 Windows GUI，不再弹出控制台窗口
 关闭托盘管理器后 MCP 后台服务继续运行
 外部强制结束 Bridge 后，每分钟周期触发自动拉起新的无窗口进程
@@ -49,7 +51,7 @@ Release Bridge 的 PE 子系统为 Windows GUI，不再弹出控制台窗口
 签名、SHA256、大小校验和失败回滚
 ```
 
-另一台已安装旧 Node 或旧 Alpha 的电脑不需要先卸载。直接运行 `HanakoLocalBridge-Setup-2.0.0-alpha.10.exe` 覆盖安装即可，安装器会停止旧任务和进程、等待端口释放、安装统一入口且支持周期自愈的 Rust 服务，并保留现有配置与数据。Alpha 9 可以通过管理器在线更新到 Alpha 10。
+另一台已安装旧 Node 或旧 Alpha 的电脑不需要先卸载。直接运行 `HanakoLocalBridge-Setup-2.0.0-alpha.11.exe` 覆盖安装即可，安装器会停止旧任务和进程、等待端口释放、安装统一入口且支持周期自愈的 Rust 服务，并保留现有配置与数据。Alpha 10 可以通过管理器在线更新到 Alpha 11，更新后快捷方式和卸载显示信息会自动修复。
 
 ## 1. 目标
 

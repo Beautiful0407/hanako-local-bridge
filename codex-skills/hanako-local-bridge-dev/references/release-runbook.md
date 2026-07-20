@@ -156,6 +156,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
   tests\rust-update-smoke.ps1
 ```
 
+It must also create legacy shortcut and uninstall metadata fixtures, verify migration to
+`hanako-bridge.exe`, and prove a forced Shell integration failure reports `failed` and rolls the
+managed payload back.
+
 Installer smoke must verify:
 
 - legacy takeover;
@@ -278,6 +282,9 @@ installedVersion = target version
 8788 health ok
 cloud.status = active
 config hash unchanged
+desktop and Start menu shortcuts target hanako-bridge.exe
+uninstall DisplayIcon targets hanako-bridge.exe
+uninstall DisplayVersion equals target version
 ```
 
 Export the scheduled task and verify `TimeTrigger`, `PT1M` and `IgnoreNew`. Confirm the Bridge

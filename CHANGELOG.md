@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.11 - 2026-07-20
+
+- Repairs desktop and Start menu shortcuts during signed online updates so existing installations migrate from the internal `hanako-manager.exe` target to the unified `hanako-bridge.exe` product entry.
+- Refreshes the uninstall `DisplayIcon` and `DisplayVersion` during online updates, matching fresh and overwrite installs.
+- Moves Windows Shell integration into the shared Rust maintenance library so the installer and updater use one implementation.
+- Treats Shell integration repair failure as an update failure and rolls the managed payload back instead of reporting a partial success.
+- Extends the Alpha 10-to-Alpha 11 signed update smoke test with isolated shortcut and uninstall-registry migration checks.
+
 ## 2.0.0-alpha.10 - 2026-07-20
 
 - Makes `hanako-bridge.exe` the single user-facing Windows product entry.

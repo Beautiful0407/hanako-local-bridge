@@ -157,6 +157,7 @@ Own:
 - SHA256 and size validation;
 - safe ZIP extraction;
 - transactional replacement and rollback;
+- shared desktop/Start shortcut and uninstall metadata repair;
 - `data/update-state.json`;
 - release `pack` command.
 
@@ -169,7 +170,7 @@ Own:
 - embedded runtime ZIP;
 - first install and overwrite repair;
 - legacy process/task takeover;
-- shortcuts and uninstall registration;
+- shared Shell integration invocation and uninstall removal;
 - detached uninstall;
 - preservation of persistent and unknown files.
 
@@ -231,6 +232,7 @@ Manager/Bridge checks effective manifest
   -> maintenance verifies HTTPS + signature + size + SHA256
   -> detached worker stops old runtime
   -> payload transaction preserves persistent files
+  -> shared Shell integration repairs shortcuts and uninstall metadata
   -> service task is repaired and started
   -> update-state.json records result
   -> Manager may reconnect after the old HTTP connection closes
@@ -238,6 +240,10 @@ Manager/Bridge checks effective manifest
 
 The install HTTP request may end while the old Bridge exits. Treat `update-state.json`, installed
 payload version and new health as authoritative.
+
+Shell integration repair is part of the update transaction outcome. A shortcut or uninstall
+metadata repair error must fail the update and trigger managed-payload rollback instead of
+reporting partial success.
 
 ## Persistent Data
 

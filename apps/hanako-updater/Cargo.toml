@@ -17,6 +17,7 @@ path = "src/lib.rs"
 anyhow.workspace = true
 chrono.workspace = true
 hanako-bridge-core = { path = "../../crates/hanako-bridge-core" }
+mslnk.workspace = true
 reqwest.workspace = true
 semver.workspace = true
 serde.workspace = true
@@ -27,6 +28,7 @@ tempfile = "3"
 url.workspace = true
 uuid.workspace = true
 walkdir.workspace = true
+winreg.workspace = true
 zip.workspace = true
 
 [dev-dependencies]

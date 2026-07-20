@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeSet,
-    fs,
+    env, fs,
     io::Write as _,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -17,11 +17,13 @@ use hanako_bridge_core::{
         verify_manifest_signature,
     },
 };
+use mslnk::ShellLink;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use sysinfo::{ProcessesToUpdate, System};
 use url::Url;
 use walkdir::WalkDir;
+use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 #[cfg(windows)]
@@ -615,6 +617,60 @@ pub fn launch_product_entry(install_root: &Path) {
     }
 }
 
+pub fn repair_shell_integration(install_root: &Path, version: &str) -> anyhow::Result<()> {
+    let product_entry = product_entry_executable(install_root);
+    ensure!(
+        product_entry.is_file(),
+        "product entry executable is missing: {}",
+        product_entry.display()
+    );
+    let desktop = env::var_os("USERPROFILE")
+        .map(PathBuf::from)
+        .context("USERPROFILE is missing")?
+        .join("Desktop")
+        .join("Hanako Local Bridge.lnk");
+    let start_menu_dir = env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .context("APPDATA is missing")?
+        .join("Microsoft/Windows/Start Menu/Programs/Hanako Local Bridge");
+    fs::create_dir_all(desktop.parent().context("desktop shortcut has no parent")?)?;
+    fs::create_dir_all(&start_menu_dir)?;
+    let mut shortcut = ShellLink::new(&product_entry)?;
+    shortcut.set_name(Some("Hanako Local Bridge".to_string()));
+    shortcut.set_icon_location(Some(product_entry.to_string_lossy().into_owned()));
+    shortcut.create_lnk(&desktop)?;
+    shortcut.create_lnk(start_menu_dir.join("Hanako Local Bridge.lnk"))?;
+
+    let uninstall = install_root.join("HanakoLocalBridge-Setup.exe");
+    let uninstall_string = format!(
+        "\"{}\" --uninstall --install-root \"{}\"",
+        uninstall.display(),
+        install_root.display()
+    );
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (key, _) = hkcu.create_subkey(uninstall_registry_key())?;
+    key.set_value("DisplayName", &"Hanako Local Bridge")?;
+    key.set_value("DisplayVersion", &version)?;
+    key.set_value("Publisher", &"Hanako")?;
+    key.set_value("InstallLocation", &install_root.to_string_lossy().as_ref())?;
+    key.set_value("DisplayIcon", &product_entry.to_string_lossy().as_ref())?;
+    key.set_value("UninstallString", &uninstall_string)?;
+    key.set_value("QuietUninstallString", &uninstall_string)?;
+    key.set_value("NoModify", &1u32)?;
+    key.set_value("NoRepair", &1u32)?;
+    Ok(())
+}
+
+fn product_entry_executable(install_root: &Path) -> PathBuf {
+    install_root.join("hanako-bridge.exe")
+}
+
+fn uninstall_registry_key() -> String {
+    env::var("HANA_INSTALLER_UNINSTALL_KEY").unwrap_or_else(|_| {
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HanakoLocalBridge".to_string()
+    })
+}
+
 fn is_remote(source: &str) -> anyhow::Result<bool> {
     if source.starts_with("http://") {
         anyhow::bail!("remote update manifests must use HTTPS");
@@ -934,5 +990,14 @@ mod tests {
             &["node.exe".into(), r"C:\Work\unrelated\server.cjs".into()],
             install
         ));
+    }
+
+    #[test]
+    fn shell_integration_uses_the_unified_product_entry() {
+        let install = Path::new(r"C:\Users\Example\AppData\Local\HanakoLocalBridge");
+        assert_eq!(
+            product_entry_executable(install),
+            install.join("hanako-bridge.exe")
+        );
     }
 }

@@ -18,7 +18,7 @@ use hanako_bridge_core::{
 };
 use hanako_maintenance::{
     PayloadTransaction, build_release_package, check_update, launch_product_entry, prepare_update,
-    start_installed_service, stop_installed_service_and_processes,
+    repair_shell_integration, start_installed_service, stop_installed_service_and_processes,
 };
 use serde::Serialize;
 use sysinfo::{Pid, ProcessesToUpdate, System};
@@ -228,6 +228,7 @@ fn run_worker(arguments: &[std::ffi::OsString]) -> anyhow::Result<()> {
             .context("update transaction missing")?
             .installed_version()
             .to_string();
+        repair_shell_integration(&install_root, &installed)?;
         if !test_mode {
             start_installed_service(&install_root)?;
         }

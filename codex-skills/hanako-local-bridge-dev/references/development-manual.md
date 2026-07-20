@@ -113,8 +113,8 @@ $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 | Scheduled task/service lifecycle | `apps/hanako-bridge/src/service.rs` | Installer smoke, real process recovery |
 | Manager HTML/API | `apps/hanako-bridge/assets`, `manager.rs` | Manager tests and real browser/WebView2 |
 | Native tray/window/single instance | `apps/hanako-manager` | Manager unit tests and real native run |
-| Update transaction/signature | `apps/hanako-updater` | Maintenance tests and update smoke |
-| Installer/shortcuts/uninstall | `apps/hanako-installer` | Installer unit and installer smoke |
+| Update transaction/signature/Shell integration | `apps/hanako-updater` | Maintenance tests and update smoke |
+| Installer/bootstrap/uninstall removal | `apps/hanako-installer` | Installer unit and installer smoke |
 | Device routing/offline queue | `apps/hanako-device-router` | Router unit and Node protocol tests |
 | Stable Node compatibility | `server.cjs`, `lib`, PowerShell | `npm.cmd test` or selected legacy tests |
 | Release feed/VPS docs | release docs and operations record | Public manifest, hashes, stable isolation |
@@ -318,6 +318,8 @@ payload-manifest.json
 logs\update.log
 8787/health
 8788/health
+desktop and Start menu shortcut targets
+uninstall DisplayIcon and DisplayVersion
 ```
 
 Do not trigger the update repeatedly while a worker is active.

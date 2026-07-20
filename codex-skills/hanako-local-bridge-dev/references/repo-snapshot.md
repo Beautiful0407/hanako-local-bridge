@@ -4,17 +4,17 @@
 
 ## Repository
 
-- Captured: `2026-07-19`
+- Captured: `2026-07-20T22:13:04.8520473+08:00`
 - Root: `C:\Users\30456\Documents\hanako 开发\hanako-mcp-publish-20260717`
 - Remote: `https://github.com/Beautiful0407/hanako--MCP-.git`
 - Branch: `main`
-- Latest tag: `v2.0.0-alpha.9`
+- Latest tag: `v2.0.0-alpha.10`
 
 Live commit and dirty state are reported by `scripts/inspect-environment.ps1` and are intentionally not stored in this tracked snapshot.
 
 ## Product
 
-- Rust workspace: `2.0.0-alpha.9`
+- Rust workspace: `2.0.0-alpha.11`
 - Stable Node package: `1.4.9`
 - Signing key present: `True`
 
@@ -32,25 +32,25 @@ Live commit and dirty state are reported by `scripts/inspect-environment.ps1` an
 
 | Name | Bytes | SHA256 |
 |---|---:|---|
-| `HanakoLocalBridge-2.0.0-alpha.9-win-x64.zip` | 6678257 | `eda1a14ccfe8508ebc3d56c4c6d85a53ffa89f636f1f05723c5e42414a1547a7` |
-| `HanakoLocalBridge-Setup-2.0.0-alpha.9.exe` | 8901632 | `7e8e39800e98bc4567e61e3879d7a3c993c7b568414e7bd23f95d3b18acd7db5` |
-| `update-manifest.json` | 958 | `ab58b80c516c18ea478a8e1ede81ec917ce5804b0f2d4092efcc112f630c6e91` |
+| `HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip` | 6700626 | `cd2364dfb44a386409b9d5dc3ceeb5fabbd6061ecb26888746a142411ec8df58` |
+| `HanakoLocalBridge-Setup-2.0.0-alpha.11.exe` | 8925184 | `3dc6615b79556021bbe65d391a91b6903324c595db626d7860f5b1f8e7f39043` |
+| `update-manifest.json` | 967 | `9396898c3c8a2b91439b7b42e2aef8aef7342f07279eb064fcca9401d9f1fd5f` |
 
 ## Installed Runtime
 
 - Install root: `C:\Users\30456\AppData\Local\HanakoLocalBridge`
 - Installed: `True`
-- Version: `2.0.0-alpha.9`
+- Version: `2.0.0-alpha.10`
 - Health 8787: `True`
 - Health 8788: `True`
 - Cloud: `active`
 - Cloud last error: ``
-- Cloud last connected: `2026-07-19T16:19:55.492742100+00:00`
-- Cloud last seen: `2026-07-19T16:27:25.552071600+00:00`
+- Cloud last connected: `2026-07-20T13:24:17.477175800+00:00`
+- Cloud last seen: `2026-07-20T14:13:02.545076600+00:00`
 - Device ID: `laptop-hl78935t`
-- Bridge PID: `7396`
+- Bridge PID: `47836`
 - Main window handle: `0`
-- Manager count: `0`
+- Manager count: `1`
 - Task exists/state: `True` / `Running`
 - Task last result: `2147946720`
 - Task hidden: `True`

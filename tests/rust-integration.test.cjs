@@ -9,7 +9,7 @@ const projectDir = path.resolve(__dirname, "..");
 const bridgeExe =
   process.env.HANAKO_RUST_BRIDGE_EXE ||
   path.join(projectDir, "target", "debug", "hanako-bridge.exe");
-const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.10";
+const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.11";
 
 async function checkedFetch(label, url, options) {
   try {
