@@ -18,7 +18,11 @@ use hanako_bridge_core::{
     },
 };
 use mslnk::ShellLink;
-use reqwest::blocking::Client;
+use reqwest::{
+    StatusCode,
+    blocking::Client,
+    header::{ACCEPT_ENCODING, CONTENT_RANGE, RANGE},
+};
 use serde::Serialize;
 use sysinfo::{ProcessesToUpdate, System};
 use url::Url;
@@ -32,6 +36,8 @@ use std::os::windows::process::CommandExt as _;
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const REMOTE_DOWNLOAD_ATTEMPTS: usize = 4;
+const REMOTE_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,7 +210,11 @@ pub fn prepare_update(
     let package_source = resolve_reference(manifest_source, &manifest.package_url)?;
     fs::create_dir_all(work_root)?;
     let package_path = work_root.join("package.zip");
-    download_resource(&package_source, &package_path)?;
+    download_resource(
+        &package_source,
+        &package_path,
+        (manifest.size > 0).then_some(manifest.size),
+    )?;
     let actual_size = fs::metadata(&package_path)?.len();
     ensure!(
         manifest.size == 0 || actual_size == manifest.size,
@@ -428,7 +438,11 @@ pub fn resolve_reference(base: &str, reference: &str) -> anyhow::Result<String> 
     Ok(absolute(&path)?.to_string_lossy().into_owned())
 }
 
-pub fn download_resource(source: &str, destination: &Path) -> anyhow::Result<()> {
+pub fn download_resource(
+    source: &str,
+    destination: &Path,
+    expected_size: Option<u64>,
+) -> anyhow::Result<()> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -442,25 +456,128 @@ pub fn download_resource(source: &str, destination: &Path) -> anyhow::Result<()>
         let url = Url::parse(source)?;
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(600))
+            .timeout(Duration::from_secs(180))
+            .tcp_keepalive(Duration::from_secs(30))
+            .http1_only()
             .build()?;
-        let mut response = client.get(url).send()?.error_for_status()?;
-        let mut file = fs::File::create(&temp)?;
-        std::io::copy(&mut response, &mut file)?;
-        file.flush()
+        download_remote_resource(
+            &client,
+            &url,
+            &temp,
+            expected_size,
+            REMOTE_DOWNLOAD_ATTEMPTS,
+            REMOTE_DOWNLOAD_RETRY_DELAY,
+        )
     } else {
-        fs::copy(source, &temp).map(|_| ())
+        fs::copy(source, &temp).map(|_| ()).map_err(Into::into)
     };
     if let Err(error) = result {
         let _ = fs::remove_file(&temp);
-        return Err(error.into());
+        return Err(error);
     }
-    ensure!(
-        fs::metadata(&temp)?.len() > 0,
-        "update download produced an empty file"
-    );
+    let actual_size = fs::metadata(&temp)?.len();
+    ensure!(actual_size > 0, "update download produced an empty file");
+    if let Some(expected_size) = expected_size {
+        ensure!(
+            actual_size == expected_size,
+            "update download size mismatch: expected {expected_size}, got {actual_size}"
+        );
+    }
     replace_file(&temp, destination)?;
     Ok(())
+}
+
+fn download_remote_resource(
+    client: &Client,
+    url: &Url,
+    temp: &Path,
+    expected_size: Option<u64>,
+    max_attempts: usize,
+    retry_delay: Duration,
+) -> anyhow::Result<()> {
+    ensure!(max_attempts > 0, "remote download requires an attempt");
+    let mut last_error = None;
+    for attempt in 1..=max_attempts {
+        let mut offset = fs::metadata(temp).map(|value| value.len()).unwrap_or(0);
+        if expected_size.is_some_and(|expected| offset == expected) {
+            return Ok(());
+        }
+        if expected_size.is_some_and(|expected| offset > expected) {
+            fs::remove_file(temp)?;
+            offset = 0;
+        }
+        let attempt_result = (|| -> anyhow::Result<()> {
+            let mut request = client.get(url.clone()).header(ACCEPT_ENCODING, "identity");
+            if offset > 0 {
+                request = request.header(RANGE, format!("bytes={offset}-"));
+            }
+            let mut response = request.send()?;
+            let status = response.status();
+            if status == StatusCode::RANGE_NOT_SATISFIABLE
+                && expected_size.is_some_and(|expected| offset == expected)
+            {
+                return Ok(());
+            }
+            response = response.error_for_status()?;
+            let append = if offset > 0 && status == StatusCode::PARTIAL_CONTENT {
+                let expected_prefix = format!("bytes {offset}-");
+                let content_range = response
+                    .headers()
+                    .get(CONTENT_RANGE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                ensure!(
+                    content_range.starts_with(&expected_prefix),
+                    "update server returned an invalid Content-Range for offset {offset}: {content_range}"
+                );
+                true
+            } else {
+                false
+            };
+            let mut file = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(append)
+                .truncate(!append)
+                .open(temp)?;
+            let copy_result = std::io::copy(&mut response, &mut file);
+            let flush_result = file.flush();
+            drop(file);
+            let actual_size = fs::metadata(temp).map(|value| value.len()).unwrap_or(0);
+            if let Some(expected_size) = expected_size {
+                if actual_size == expected_size {
+                    return Ok(());
+                }
+                ensure!(
+                    actual_size < expected_size,
+                    "update download exceeded expected size: expected {expected_size}, got {actual_size}"
+                );
+            }
+            copy_result?;
+            flush_result?;
+            if let Some(expected_size) = expected_size {
+                anyhow::bail!(
+                    "update response ended early: expected {expected_size} bytes, got {actual_size}"
+                );
+            }
+            ensure!(actual_size > 0, "update download produced an empty file");
+            Ok(())
+        })();
+        match attempt_result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < max_attempts {
+                    thread::sleep(retry_delay.saturating_mul(attempt as u32));
+                }
+            }
+        }
+    }
+    Err(last_error
+        .unwrap_or_else(|| anyhow::anyhow!("remote update download failed without an error"))
+        .context(format!(
+            "remote update download failed after {max_attempts} attempts"
+        )))
 }
 
 pub fn extract_zip_safely(package_path: &Path, destination: &Path) -> anyhow::Result<()> {
@@ -798,6 +915,7 @@ fn remove_empty_tree(root: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::{io::Read as _, net::TcpListener, sync::Arc};
     use tempfile::tempdir;
     use zip::{ZipWriter, write::SimpleFileOptions};
 
@@ -999,5 +1117,96 @@ mod tests {
             product_entry_executable(install),
             install.join("hanako-bridge.exe")
         );
+    }
+
+    #[test]
+    fn remote_download_resumes_after_an_interrupted_response_body() {
+        let payload = Arc::new(
+            (0..256 * 1024)
+                .map(|index| (index % 251) as u8)
+                .collect::<Vec<_>>(),
+        );
+        let split = payload.len() / 2;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server_payload = Arc::clone(&payload);
+        let server = thread::spawn(move || {
+            for attempt in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 1024];
+                while !request.ends_with(b"\r\n\r\n") {
+                    let read = stream.read(&mut buffer).unwrap();
+                    assert!(read > 0);
+                    request.extend_from_slice(&buffer[..read]);
+                }
+                let request = String::from_utf8_lossy(&request);
+                if attempt == 0 {
+                    assert!(!request.to_ascii_lowercase().contains("\r\nrange:"));
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        server_payload.len()
+                    )
+                    .unwrap();
+                    stream.write_all(&server_payload[..split]).unwrap();
+                } else {
+                    assert!(
+                        request
+                            .to_ascii_lowercase()
+                            .contains(&format!("\r\nrange: bytes={split}-"))
+                    );
+                    write!(
+                        stream,
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
+                        server_payload.len() - split,
+                        split,
+                        server_payload.len() - 1,
+                        server_payload.len()
+                    )
+                    .unwrap();
+                    stream.write_all(&server_payload[split..]).unwrap();
+                }
+                stream.flush().unwrap();
+            }
+        });
+
+        let temp = tempdir().unwrap();
+        let destination = temp.path().join("package.zip");
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(2))
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        download_remote_resource(
+            &client,
+            &Url::parse(&format!("http://{address}/package.zip")).unwrap(),
+            &destination,
+            Some(payload.len() as u64),
+            3,
+            Duration::ZERO,
+        )
+        .unwrap();
+
+        server.join().unwrap();
+        assert_eq!(fs::read(destination).unwrap(), *payload);
+    }
+
+    #[test]
+    #[ignore = "requires explicit remote URL, size, and SHA256 environment variables"]
+    fn remote_release_download_probe() {
+        let source = env::var("HANAKO_REMOTE_DOWNLOAD_PROBE_URL").unwrap();
+        let expected_size = env::var("HANAKO_REMOTE_DOWNLOAD_PROBE_SIZE")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let expected_sha256 = env::var("HANAKO_REMOTE_DOWNLOAD_PROBE_SHA256").unwrap();
+        let temp = tempdir().unwrap();
+        let destination = temp.path().join("package.zip");
+
+        download_resource(&source, &destination, Some(expected_size)).unwrap();
+
+        assert_eq!(fs::metadata(&destination).unwrap().len(), expected_size);
+        assert_eq!(sha256_file(&destination).unwrap(), expected_sha256);
     }
 }

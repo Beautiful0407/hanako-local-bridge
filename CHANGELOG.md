@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0-alpha.12 - 2026-07-20
+
+- Makes remote update package downloads retryable and resumable after interrupted response bodies.
+- Sends HTTP Range requests from the retained partial-file offset and safely restarts when a server ignores the range.
+- Accepts a body-close error only when the downloaded file already reached the signed manifest size, then still requires the existing SHA256 verification.
+- Reduces each remote request timeout to three minutes, adds TCP keepalive, and forces HTTP/1.1 for more predictable Windows update downloads.
+- Adds deterministic interrupted-body coverage and an explicit ignored probe for validating a real signed release URL, size, and SHA256.
+
 ## 2.0.0-alpha.11 - 2026-07-20
 
 - Repairs desktop and Start menu shortcuts during signed online updates so existing installations migrate from the internal `hanako-manager.exe` target to the unified `hanako-bridge.exe` product entry.

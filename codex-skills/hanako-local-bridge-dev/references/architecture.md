@@ -153,6 +153,7 @@ Builds `hanako-maintenance.exe`.
 Own:
 
 - HTTPS manifest download;
+- retryable HTTP/1.1 package download with Range resume;
 - RSA XML signature verification;
 - SHA256 and size validation;
 - safe ZIP extraction;
@@ -230,6 +231,7 @@ authenticated Hana web session
 ```text
 Manager/Bridge checks effective manifest
   -> maintenance verifies HTTPS + signature + size + SHA256
+  -> package download retries and resumes retained partial bytes with HTTP Range
   -> detached worker stops old runtime
   -> payload transaction preserves persistent files
   -> shared Shell integration repairs shortcuts and uninstall metadata
@@ -244,6 +246,10 @@ payload version and new health as authoritative.
 Shell integration repair is part of the update transaction outcome. A shortcut or uninstall
 metadata repair error must fail the update and trigger managed-payload rollback instead of
 reporting partial success.
+
+Remote package downloads keep a per-worker partial file across bounded attempts. A body-close
+error may be tolerated only when the file has already reached the signed manifest size; SHA256
+verification remains mandatory before extraction.
 
 ## Persistent Data
 

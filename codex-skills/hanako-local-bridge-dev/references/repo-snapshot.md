@@ -4,17 +4,17 @@
 
 ## Repository
 
-- Captured: `2026-07-20T22:13:04.8520473+08:00`
+- Captured: `2026-07-20T23:09:27.5283607+08:00`
 - Root: `C:\Users\30456\Documents\hanako 开发\hanako-mcp-publish-20260717`
 - Remote: `https://github.com/Beautiful0407/hanako--MCP-.git`
 - Branch: `main`
-- Latest tag: `v2.0.0-alpha.10`
+- Latest tag: `v2.0.0-alpha.11`
 
 Live commit and dirty state are reported by `scripts/inspect-environment.ps1` and are intentionally not stored in this tracked snapshot.
 
 ## Product
 
-- Rust workspace: `2.0.0-alpha.11`
+- Rust workspace: `2.0.0-alpha.12`
 - Stable Node package: `1.4.9`
 - Signing key present: `True`
 
@@ -32,9 +32,9 @@ Live commit and dirty state are reported by `scripts/inspect-environment.ps1` an
 
 | Name | Bytes | SHA256 |
 |---|---:|---|
-| `HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip` | 6700626 | `cd2364dfb44a386409b9d5dc3ceeb5fabbd6061ecb26888746a142411ec8df58` |
-| `HanakoLocalBridge-Setup-2.0.0-alpha.11.exe` | 8925184 | `3dc6615b79556021bbe65d391a91b6903324c595db626d7860f5b1f8e7f39043` |
-| `update-manifest.json` | 967 | `9396898c3c8a2b91439b7b42e2aef8aef7342f07279eb064fcca9401d9f1fd5f` |
+| `HanakoLocalBridge-2.0.0-alpha.12-win-x64.zip` | 6705761 | `688310791963229f4888b1ae83d4e11c88e317282f562a41a8e5298c0dafa9e9` |
+| `HanakoLocalBridge-Setup-2.0.0-alpha.12.exe` | 8930304 | `40fa156e6f1d83f3c5ccc91f66bb026b7fe309fbeb24a94b0bf0cbb742a8949a` |
+| `update-manifest.json` | 954 | `23c4f87efa737d09f9cf37a0eaf64dfdc1ab9fac501f5e755db2931388fb4f4b` |
 
 ## Installed Runtime
 
@@ -45,8 +45,8 @@ Live commit and dirty state are reported by `scripts/inspect-environment.ps1` an
 - Health 8788: `True`
 - Cloud: `active`
 - Cloud last error: ``
-- Cloud last connected: `2026-07-20T13:24:17.477175800+00:00`
-- Cloud last seen: `2026-07-20T14:13:02.545076600+00:00`
+- Cloud last connected: `2026-07-20T15:08:45.750296800+00:00`
+- Cloud last seen: `2026-07-20T15:09:11.012775200+00:00`
 - Device ID: `laptop-hl78935t`
 - Bridge PID: `47836`
 - Main window handle: `0`

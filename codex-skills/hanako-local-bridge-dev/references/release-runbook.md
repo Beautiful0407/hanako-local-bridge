@@ -180,6 +180,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 Do not publish if either smoke test fails.
 
+For a remote-download change, also run the ignored probe with the exact public package URL, signed
+manifest size and SHA256. It must download to a temporary test directory and must not install or
+start services.
+
 ## Commit, Tag And GitHub Release
 
 Review:
@@ -257,6 +261,7 @@ No Nginx reload or Hana restart is required for static release files. Verify:
 
 - Alpha public manifest reports target version/channel/hash/size;
 - package exists and hash matches;
+- the explicit remote download probe succeeds from the Windows release machine;
 - stable public manifest version and hash are unchanged;
 - `hanako-server.service` remains active.
 

@@ -1,8 +1,8 @@
 # Hanako 本地文件与执行桥 MCP 操作手册
 
-## Rust 2.0.0-alpha.11 预发布状态
+## Rust 2.0.0-alpha.12 预发布状态
 
-Rust Alpha 11 使用 `hanako-bridge.exe` 作为统一入口：直接运行打开托盘管理界面，`--service` 启动后台 MCP，`--status`、`--repair` 和 `--doctor` 提供维护命令。在线更新会自动把旧桌面/开始菜单快捷方式和卸载图标迁移到统一入口。Manager、Maintenance 和 Installer 继续作为内部角色；云端路由器运行兼容的 Rust Alpha 2。关闭或退出管理器只关闭界面，后台任务继续运行；异常退出后最迟约一分钟自动恢复。
+Rust Alpha 12 使用 `hanako-bridge.exe` 作为统一入口，并让公网更新包支持中断重试和 Range 断点续传。在线更新仍会自动把旧桌面/开始菜单快捷方式和卸载图标迁移到统一入口。Manager、Maintenance 和 Installer 继续作为内部角色；云端路由器运行兼容的 Rust Alpha 2。关闭或退出管理器只关闭界面，后台任务继续运行；异常退出后最迟约一分钟自动恢复。
 
 当前日常使用继续运行稳定版：
 
@@ -14,7 +14,7 @@ Rust Alpha 11 使用 `hanako-bridge.exe` 作为统一入口：直接运行打开
 不要手工复制 Rust EXE 到稳定目录。测试或覆盖修复时使用：
 
 ```text
-build\rust-release-alpha11\HanakoLocalBridge-Setup-2.0.0-alpha.11.exe
+build\rust-release-alpha12\HanakoLocalBridge-Setup-2.0.0-alpha.12.exe
 ```
 
 另一台已安装旧版的电脑可直接运行该安装器覆盖修复，不需要先卸载。迁移前仍建议至少备份：
@@ -25,7 +25,7 @@ data\
 logs\
 ```
 
-Alpha 11 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
+Alpha 12 的构建、测试、更新与回滚见 `RUST_MIGRATION.md` 和 `WINDOWS_INSTALLER_UPDATE_MANUAL.md`。
 
 ## v1.4.1 安全连接与图形化管理器
 

@@ -8,11 +8,11 @@ $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $installRoot = Join-Path $testRoot "install"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha11\HanakoLocalBridge-Setup-2.0.0-alpha.11.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha11\HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha11Smoke"
-$taskName = "Hanako Rust Alpha11 Smoke MCP"
-$actionTaskName = "Hanako Rust Alpha11 Smoke Manager Action"
+$installer = Join-Path $buildRoot "rust-release-alpha12\HanakoLocalBridge-Setup-2.0.0-alpha.12.exe"
+$payload = Join-Path $buildRoot "rust-release-alpha12\HanakoLocalBridge-2.0.0-alpha.12-win-x64.zip"
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha12Smoke"
+$taskName = "Hanako Rust Alpha12 Smoke MCP"
+$actionTaskName = "Hanako Rust Alpha12 Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
 $legacyServer = Join-Path $installRoot "legacy-server.cjs"
 $legacyLauncher = Join-Path $installRoot "run-legacy-hidden.vbs"
@@ -78,10 +78,10 @@ function Test-BridgeHealth {
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.11" -and
+      $health.version -eq "2.0.0-alpha.12" -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.11"
+      $approvalHealth.version -eq "2.0.0-alpha.12"
     )
   } catch {
     return $false
@@ -268,8 +268,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 11 installer is missing."
-  Assert-Path $payload "Rust Alpha 11 payload is missing."
+  Assert-Path $installer "Rust Alpha 12 installer is missing."
+  Assert-Path $payload "Rust Alpha 12 payload is missing."
 
   New-Item -ItemType Directory -Force -Path $installRoot, $profileRoot, $appDataRoot | Out-Null
 
@@ -309,7 +309,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust Alpha11 Smoke"
+      taskPrefix = "Hanako Rust Alpha12 Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -373,7 +373,7 @@ try {
       throw "Product shortcut points to '$shortcutTarget' instead of the unified entry '$bridgePath'."
     }
   }
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha11Smoke")) {
+  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha12Smoke")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -459,7 +459,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $installRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha11Smoke") {
+  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha12Smoke") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -482,7 +482,7 @@ try {
       Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha11Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustAlpha12Smoke" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData

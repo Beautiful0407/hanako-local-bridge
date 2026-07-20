@@ -324,6 +324,12 @@ uninstall DisplayIcon and DisplayVersion
 
 Do not trigger the update repeatedly while a worker is active.
 
+If the final message is `request or response body error`, confirm the payload stayed on the old
+version and health recovered. Alpha 12 and later retain partial package bytes and issue HTTP Range
+requests across bounded retries. Validate the exact public package path without installing it by
+running the ignored `remote_release_download_probe` with explicit URL, size and SHA256 environment
+variables.
+
 ### Node integration reports an old version
 
 Build `target\debug` explicitly before running Node Rust tests:
@@ -434,6 +440,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 - `Get-NetTCPConnection` can be permission-sensitive; use `netstat -ano` as a lower-layer check.
 - Task Scheduler `Hidden` does not change the PE subsystem.
 - A manager update request timeout does not prove update failure.
+- A remote body error before Alpha 12 is terminal because the partial ZIP is deleted; Alpha 12 and
+  later retry and resume it inside the same worker.
 - Running Node integration against a stale root Debug EXE produces misleading version failures.
 - Do not use manual empty renderer assets or hand-built placeholders to bypass build requirements.
 - Do not expose a remote command-execution HTTP endpoint as a shortcut for SSH or MCP control.

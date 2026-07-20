@@ -34,7 +34,7 @@ tests/rust-update-smoke.ps1
 
 `hanako-bridge-core` 负责兼容配置、设备身份、路径解析、更新清单和原子 JSON 存储；`hanako-bridge` 负责 MCP、文件操作、脚本执行、云端连接、审批、服务控制和管理 API；`hanako-manager` 使用 Winit、Wry、WebView2 和系统托盘承载唯一的用户管理入口；`hanako-maintenance` 负责隐藏执行签名下载、事务更新和回滚；`hanako-bootstrap` 只作为统一安装包的构建/安装角色；`hanako-device-router` 负责同一产品在 Linux 云端的多设备路由和离线队列。
 
-当前 Windows Rust 版本为 `2.0.0-alpha.11`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 11 延续 Alpha 10 的统一 `hanako-bridge.exe` 用户入口，并让安装器和在线更新器共用 Shell 集成修复：桌面、开始菜单、卸载 `DisplayIcon` 和 `DisplayVersion` 都会在更新时迁移，修复失败会进入负载回滚路径。Alpha 8 的 Windows GUI 子系统和 Alpha 9 的每分钟周期恢复继续保留。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务；Windows 稳定渠道仍为 `1.4.9`。
+当前 Windows Rust 版本为 `2.0.0-alpha.12`，云端 Rust 路由器为兼容的 `2.0.0-alpha.2`。Alpha 12 为 HTTPS 更新包加入超时重试、部分文件保留和 HTTP Range 断点续传，最终仍执行清单大小与 SHA256 校验。Alpha 11 的 Shell 集成迁移、Alpha 10 的统一入口、Alpha 9 的每分钟周期恢复和 Alpha 8 的 Windows GUI 子系统继续保留。关闭管理器只退出管理界面，不会终止独立的 MCP 后台任务；Windows 稳定渠道仍为 `1.4.9`。
 
 完整质量门：
 

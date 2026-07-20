@@ -2,24 +2,24 @@
 
 ## Status
 
-The Rust implementation is currently `2.0.0-alpha.11`.
+The Rust implementation is currently `2.0.0-alpha.12`.
 
-Alpha 11 keeps `hanako-bridge.exe` as the single user-facing Windows entry and fixes migration of existing Shell integration during signed online updates. Desktop and Start menu shortcuts, uninstall `DisplayIcon`, and `DisplayVersion` are repaired by the same shared Rust function used by the installer; a repair error fails the update and enters managed-payload rollback. Alpha 10's unified entry, Alpha 9's one-minute recovery trigger, and Alpha 8's Windows GUI subsystem behavior remain in place. Closing the manager still leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
+Alpha 12 makes signed remote package downloads retryable and resumable. Partial ZIP bytes are retained across attempts, subsequent requests use HTTP Range, servers that ignore Range restart safely, and a connection-close error is accepted only if the file already reached the signed manifest size before SHA256 verification. Alpha 11's Shell integration migration, Alpha 10's unified entry, Alpha 9's one-minute recovery trigger, and Alpha 8's Windows GUI subsystem behavior remain in place. Closing the manager still leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
 
-Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 11 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
+Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 12 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
 
 ## Why Rust
 
 The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. The Rust design currently produces several internal Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems. These are roles inside the single Hanako Local Bridge product, not separate products: users receive one installer, one manager entry, one configuration model, one version and one update/repair flow.
 
-Measured from the rebuilt Windows x64 Alpha 11 release:
+Measured from the rebuilt Windows x64 Alpha 12 release:
 
 ```text
 hanako-bridge.exe       6,283,776 bytes
 hanako-manager.exe      2,299,904 bytes
-hanako-maintenance.exe  5,742,592 bytes
-runtime ZIP             6,700,626 bytes
-embedded installer      8,925,184 bytes
+hanako-maintenance.exe  5,750,784 bytes
+runtime ZIP             6,705,761 bytes
+embedded installer      8,930,304 bytes
 ```
 
 For comparison, the stable `1.4.9` installer is about `95.91 MiB`. On the cloud host, the Rust device router used about `5.1 MiB` after the observation period; the replaced Node router used about `48.8 MiB`.
@@ -146,7 +146,7 @@ $entry = Start-Process target\release\hanako-bridge.exe -ArgumentList '--smoke-t
 if ($entry.ExitCode -ne 0) { throw "Unified product entry smoke test failed" }
 ```
 
-The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 11 takeover, checks that shortcuts target `hanako-bridge.exe`, asserts the installed Bridge PE subsystem is Windows GUI, checks the one-minute task trigger, calls the installed manager repair API, checks overwrite and repeated product-entry single-instance behavior, closes the manager while confirming the Bridge stays healthy, force-terminates the Bridge, waits for a different process ID to recover without a visible window, and then uninstalls. The update smoke test installs an Alpha 10 payload, injects the current Alpha 11 maintenance binary, and verifies signed update handoff plus desktop shortcut, Start menu shortcut, uninstall `DisplayIcon`, and `DisplayVersion` migration.
+The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 12 takeover, checks that shortcuts target `hanako-bridge.exe`, asserts the installed Bridge PE subsystem is Windows GUI, checks the one-minute task trigger, calls the installed manager repair API, checks overwrite and repeated product-entry single-instance behavior, closes the manager while confirming the Bridge stays healthy, force-terminates the Bridge, waits for a different process ID to recover without a visible window, and then uninstalls. The update smoke test installs an Alpha 11 payload, injects the current Alpha 12 maintenance binary, and verifies signed update handoff plus shortcut/uninstall migration and rollback. Maintenance unit coverage deliberately interrupts an HTTP body and requires a Range resume; an ignored explicit probe verifies a real release URL, size, and SHA256.
 
 ## Release Packaging
 
@@ -163,16 +163,16 @@ cargo build --workspace --release
 
 target\release\hanako-maintenance.exe pack `
   --binaries target\release `
-  --output build\rust-release-alpha11 `
+  --output build\rust-release-alpha12 `
   --public-key update-public-key.xml `
-  --version 2.0.0-alpha.11 `
+  --version 2.0.0-alpha.12 `
   --channel alpha `
-  --package-url HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip `
+  --package-url HanakoLocalBridge-2.0.0-alpha.12-win-x64.zip `
   --signing-key "$env:USERPROFILE\.hanako-update-signing\private-key.xml" `
-  --notes "Hanako Local Bridge Rust 2.0.0-alpha.11: repair Shell integration during online updates"
+  --notes "Hanako Local Bridge Rust 2.0.0-alpha.12: resumable remote update downloads"
 
 $env:HANA_INSTALLER_PAYLOAD = (
-  Resolve-Path 'build\rust-release-alpha11\HanakoLocalBridge-2.0.0-alpha.11-win-x64.zip'
+  Resolve-Path 'build\rust-release-alpha12\HanakoLocalBridge-2.0.0-alpha.12-win-x64.zip'
 ).Path
 cargo build -p hanako-bootstrap --release
 ```
@@ -245,7 +245,7 @@ The previous Node script and a root-only timestamped backup remain on the server
 
 ## Remaining Production Work
 
-1. Publish the signed Alpha 11 installer and manifest to the separate prerelease channel.
+1. Publish the signed Alpha 12 installer and manifest to the separate prerelease channel.
 2. Verify installation, tray behavior, update, uninstall, and reboot recovery on clean Windows 10 and Windows 11 virtual machines.
 3. Run a staged migration on a non-primary device before offering the Rust installer to the stable fleet.
 4. Keep the Node/PowerShell/VBS/WinUI implementation until stable clients have completed a rollback-capable migration.
