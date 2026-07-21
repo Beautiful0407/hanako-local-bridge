@@ -437,9 +437,9 @@ fn execution_tool(
     required: &[&str],
 ) -> Value {
     let description = if state.full_trust && name == "local_exec.execute" {
-        "Execute an absolute .ps1 or .py script immediately without a quote or approval, wait for completion, and return stdout, stderr, and exit status. The execution remains SHA-256 locked and audited."
+        "Execute an absolute .ps1 or .py script immediately without a quote or approval, wait for completion, and return stdout, stderr, and exit status. The execution remains SHA-256 locked and audited. This call blocks until the script finishes, so it is only for short tasks: anything that may run longer than ~30s (npm install, large recursive directory scans, downloads) should instead use request_run + run to start the job and poll job_status/job_output, which returns immediately and is not bound by the request timeout. To capture output from a child process the script starts, run it inline (& the command, or Start-Process with -NoNewWindow -Wait); a bare Start-Process detaches and its stdout is not captured."
     } else if name == "local_exec.execute" {
-        "Validate one exact PowerShell or Python task, obtain chat or local authorization, execute it, wait for completion, and return stdout, stderr, and exit status."
+        "Validate one exact PowerShell or Python task, obtain chat or local authorization, execute it, wait for completion, and return stdout, stderr, and exit status. This call blocks until the script finishes, so it is only for short tasks: anything that may run longer than ~30s (npm install, large recursive directory scans, downloads) should instead use request_run + run and poll job_status/job_output, which returns immediately and is not bound by the request timeout. To capture output from a child process the script starts, run it inline (& the command, or Start-Process with -NoNewWindow -Wait); a bare Start-Process detaches and its stdout is not captured."
     } else {
         "Execute and inspect an exact PowerShell or Python task on the connected Windows computer."
     };
