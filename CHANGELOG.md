@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-alpha.14 - 2026-07-21
+
+- Keeps the cloud WebSocket connection alive during long-running RPC calls. The connection loop previously awaited each `rpc_request` inline, so a slow tool call (an npm install, a large recursive directory scan, a long script) froze the heartbeat/ping loop for the whole call and the server dropped the connection as dead. RPC handling is now dispatched to its own task, with responses delivered through an outbound channel, while the loop keeps servicing heartbeats and pings.
+- Corrects the integration and device-router tool-count assertions (33 bridge tools, 36 through the router) after the alpha.13 process-management tools were added.
+
 ## 2.0.0-alpha.13 - 2026-07-21
 
 - Adds `local_exec.list_processes` and `local_exec.terminate` so the agent can observe and manage arbitrary processes, returning a structured result (terminated / failed-with-reason / protected / matched) instead of an opaque error. Protection is PID-aware: the bridge, its running job workers, and the manager/updater are never killed; a by-name match of more than one process requires confirmation.

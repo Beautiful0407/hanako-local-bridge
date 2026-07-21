@@ -168,7 +168,7 @@ async function run() {
     assert.equal(health.devices[0].online, true);
 
     const listed = await rpc(routerBase, 1, "tools/list");
-    assert.equal(listed.result.tools.length, 34);
+    assert.equal(listed.result.tools.length, 36);
     assert.ok(listed.result.tools.some((tool) => tool.name === "local_fs.read_image"));
 
     const deviceRoot = `device://router-test/${root.replace(/\\/g, "/")}`;

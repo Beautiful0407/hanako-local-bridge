@@ -2,7 +2,7 @@
 
 ## Status
 
-The Rust implementation is currently `2.0.0-alpha.13`.
+The Rust implementation is currently `2.0.0-alpha.14`.
 
 Alpha 12 makes signed remote package downloads retryable and resumable. Partial ZIP bytes are retained across attempts, subsequent requests use HTTP Range, servers that ignore Range restart safely, and a connection-close error is accepted only if the file already reached the signed manifest size before SHA256 verification. Alpha 11's Shell integration migration, Alpha 10's unified entry, Alpha 9's one-minute recovery trigger, and Alpha 8's Windows GUI subsystem behavior remain in place. Closing the manager still leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
 
