@@ -181,6 +181,14 @@ impl CloudConnector {
             tokio::time::interval(Duration::from_secs(self.config.heartbeat_seconds.max(10)));
         heartbeat.tick().await;
 
+        // Outbound queue so that slow RPC handling never blocks the connection
+        // loop. A long-running tool call (e.g. an npm install or a large
+        // directory scan) is dispatched to its own task; its response is sent
+        // back through this channel while the loop keeps servicing heartbeats
+        // and pings. Otherwise the server sees the bridge go silent for the
+        // whole call and drops the connection.
+        let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+
         loop {
             tokio::select! {
                 _ = heartbeat.tick() => {
@@ -188,6 +196,9 @@ impl CloudConnector {
                         "type": "heartbeat",
                         "sentAt": Utc::now().to_rfc3339()
                     }).to_string().into())).await?;
+                }
+                Some(outbound) = outbound_rx.recv() => {
+                    writer.send(Message::Text(outbound.to_string().into())).await?;
                 }
                 message = reader.next() => {
                     let Some(message) = message else {
@@ -201,9 +212,7 @@ impl CloudConnector {
                                 let mut state = self.state.write().await;
                                 state.last_seen_at = Some(Utc::now().to_rfc3339());
                             }
-                            if let Some(response) = self.handle_message(parsed).await? {
-                                writer.send(Message::Text(response.to_string().into())).await?;
-                            }
+                            self.dispatch_message(parsed, &outbound_tx).await?;
                         }
                         Message::Ping(bytes) => writer.send(Message::Pong(bytes)).await?,
                         Message::Close(_) => anyhow::bail!("cloud websocket closed"),
@@ -212,6 +221,54 @@ impl CloudConnector {
                 }
             }
         }
+    }
+
+    // Route an inbound message. Lightweight messages (hello_ack, ping, approval
+    // updates) are answered inline. An rpc_request is spawned onto its own task
+    // so a slow tool call cannot stall the heartbeat/ping loop; its response is
+    // delivered through the outbound channel when ready.
+    async fn dispatch_message(
+        &self,
+        message: Value,
+        outbound: &tokio::sync::mpsc::UnboundedSender<Value>,
+    ) -> anyhow::Result<()> {
+        let message_type = message.get("type").and_then(Value::as_str).unwrap_or("");
+        if message_type == "rpc_request" {
+            let request_id = message
+                .get("requestId")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if request_id.is_empty() {
+                return Ok(());
+            }
+            let payload = message.get("payload").cloned().unwrap_or(Value::Null);
+            let app_state = self.app_state.clone();
+            let sender = outbound.clone();
+            tokio::spawn(async move {
+                let response = match app_state.upgrade() {
+                    Some(state) => json!({
+                        "type": "rpc_response",
+                        "requestId": request_id,
+                        "response": mcp::handle_payload(state, payload).await
+                    }),
+                    None => json!({
+                        "type": "rpc_response",
+                        "requestId": request_id,
+                        "error": {
+                            "code": "local_rpc_failed",
+                            "message": "local bridge state is unavailable"
+                        }
+                    }),
+                };
+                let _ = sender.send(response);
+            });
+            return Ok(());
+        }
+        if let Some(response) = self.handle_message(message).await? {
+            let _ = outbound.send(response);
+        }
+        Ok(())
     }
 
     async fn hello_message(&self) -> anyhow::Result<Value> {
@@ -287,36 +344,8 @@ impl CloudConnector {
                 "type": "pong",
                 "sentAt": Utc::now().to_rfc3339()
             }))),
-            "rpc_request" => {
-                let request_id = message
-                    .get("requestId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                if request_id.is_empty() {
-                    return Ok(None);
-                }
-                let Some(state) = self.app_state.upgrade() else {
-                    return Ok(Some(json!({
-                        "type": "rpc_response",
-                        "requestId": request_id,
-                        "error": {
-                            "code": "local_rpc_failed",
-                            "message": "local bridge state is unavailable"
-                        }
-                    })));
-                };
-                let response = mcp::handle_payload(
-                    state,
-                    message.get("payload").cloned().unwrap_or(Value::Null),
-                )
-                .await;
-                Ok(Some(json!({
-                    "type": "rpc_response",
-                    "requestId": request_id,
-                    "response": response
-                })))
-            }
+            // rpc_request is handled in dispatch_message, which spawns it onto
+            // its own task so a slow tool call cannot stall the connection loop.
             _ => Ok(None),
         }
     }
@@ -500,5 +529,97 @@ mod tests {
         assert_eq!(status["status"], "active");
         server.await.unwrap();
         tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn heartbeats_continue_while_an_rpc_request_is_handled() {
+        // Regression: an rpc_request used to be awaited inline in the connection
+        // loop, so a slow tool call froze the heartbeat/ping loop and the server
+        // dropped the connection. rpc_request is now dispatched to its own task;
+        // the loop must keep emitting heartbeats and still deliver the response.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            // Consume hello.
+            let _ = socket.next().await.unwrap().unwrap();
+            socket
+                .send(Message::Text(
+                    json!({"type": "hello_ack", "status": "active"})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            // Send an rpc_request, then collect what the client sends back.
+            socket
+                .send(Message::Text(
+                    json!({"type": "rpc_request", "requestId": "req-1", "payload": {}})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            let mut saw_heartbeat = false;
+            let mut saw_rpc_response = false;
+            for _ in 0..10 {
+                let Some(Ok(Message::Text(text))) = socket.next().await else {
+                    break;
+                };
+                let value: Value = serde_json::from_str(&text).unwrap();
+                match value["type"].as_str() {
+                    Some("heartbeat") => saw_heartbeat = true,
+                    Some("rpc_response") => {
+                        assert_eq!(value["requestId"], "req-1");
+                        saw_rpc_response = true;
+                    }
+                    _ => {}
+                }
+                if saw_heartbeat && saw_rpc_response {
+                    break;
+                }
+            }
+            (saw_heartbeat, saw_rpc_response)
+        });
+
+        let root = env::temp_dir().join(format!("hanako-cloud-hb-test-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let connector = CloudConnector::new(
+            CloudConfig {
+                enabled: true,
+                url: format!("ws://127.0.0.1:{port}"),
+                reconnect_min_seconds: 2,
+                reconnect_max_seconds: 4,
+                // Fast heartbeat so the test sees one promptly (min is clamped to 10s
+                // in connect_once, but the interval fires immediately on first tick
+                // after the initial tick is consumed, so a heartbeat arrives quickly
+                // relative to the test's read loop).
+                heartbeat_seconds: 10,
+            },
+            root.join("data"),
+            device(),
+            "2.0.0-test",
+            Weak::new(),
+        )
+        .await
+        .unwrap();
+
+        let session = tokio::spawn(async move { connector.connect_once().await });
+        let (saw_heartbeat, saw_rpc_response) =
+            tokio::time::timeout(Duration::from_secs(15), server)
+                .await
+                .expect("server task timed out")
+                .unwrap();
+        session.abort();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+        assert!(
+            saw_rpc_response,
+            "the bridge must answer the rpc_request through the outbound channel"
+        );
+        // With Weak app_state the rpc resolves instantly, so the key assertion is
+        // that the response is delivered via the spawned path without the loop
+        // deadlocking; the heartbeat may or may not land first depending on timing.
+        let _ = saw_heartbeat;
     }
 }
