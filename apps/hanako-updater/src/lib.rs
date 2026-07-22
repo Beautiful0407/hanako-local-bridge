@@ -327,7 +327,7 @@ impl PayloadTransaction {
         for relative in &self.touched_files {
             let target = self.install_root.join(relative_path(relative));
             if target.is_file() {
-                fs::remove_file(&target)?;
+                remove_file_with_retry(&target)?;
             }
         }
         for relative in &self.existing_files {
@@ -364,7 +364,7 @@ impl PayloadTransaction {
         for relative in old_files.difference(&new_files) {
             let target = self.install_root.join(relative_path(relative));
             if target.is_file() {
-                fs::remove_file(target)?;
+                remove_file_with_retry(&target)?;
             }
         }
         copy_file_atomic(
@@ -832,7 +832,13 @@ fn copy_file(source: &Path, destination: &Path) -> anyhow::Result<()> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(source, destination)?;
+    with_fs_lock_retry(|| fs::copy(source, destination)).with_context(|| {
+        format!(
+            "cannot copy {} to {}",
+            source.display(),
+            destination.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -860,9 +866,50 @@ fn copy_file_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
 
 fn replace_file(source: &Path, destination: &Path) -> anyhow::Result<()> {
     if destination.exists() {
-        fs::remove_file(destination)?;
+        remove_file_with_retry(destination)?;
     }
-    fs::rename(source, destination)?;
+    rename_with_retry(source, destination)?;
+    Ok(())
+}
+
+const FS_LOCK_RETRY_TIMEOUT: Duration = Duration::from_secs(10);
+const FS_LOCK_RETRY_DELAY: Duration = Duration::from_millis(100);
+
+// On Windows an antivirus scan of a freshly written executable, or a handle of a
+// just-terminated process that has not been released yet, briefly holds the file
+// open and turns the next remove/rename into ERROR_ACCESS_DENIED (5) or
+// ERROR_SHARING_VIOLATION (32). Both are transient, so retry before giving up.
+fn is_transient_lock(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(5) | Some(32))
+}
+
+fn with_fs_lock_retry<T>(mut operation: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let deadline = Instant::now() + FS_LOCK_RETRY_TIMEOUT;
+    loop {
+        match operation() {
+            Ok(value) => return Ok(value),
+            Err(error) if is_transient_lock(&error) && Instant::now() < deadline => {
+                thread::sleep(FS_LOCK_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn remove_file_with_retry(path: &Path) -> anyhow::Result<()> {
+    with_fs_lock_retry(|| fs::remove_file(path))
+        .with_context(|| format!("cannot remove {}", path.display()))?;
+    Ok(())
+}
+
+fn rename_with_retry(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    with_fs_lock_retry(|| fs::rename(source, destination)).with_context(|| {
+        format!(
+            "cannot move {} to {}",
+            source.display(),
+            destination.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -1003,6 +1050,35 @@ mod tests {
             fs::read_to_string(install.join("data/device.json")).unwrap(),
             "device"
         );
+    }
+
+    #[test]
+    fn fs_lock_retry_recovers_after_transient_access_denied() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        let result = with_fs_lock_retry(|| {
+            let current = attempts.get();
+            attempts.set(current + 1);
+            if current < 2 {
+                Err(std::io::Error::from_raw_os_error(5))
+            } else {
+                Ok(current)
+            }
+        });
+        assert_eq!(result.unwrap(), 2);
+        assert_eq!(attempts.get(), 3);
+    }
+
+    #[test]
+    fn fs_lock_retry_gives_up_on_non_transient_errors() {
+        use std::cell::Cell;
+        let attempts = Cell::new(0u32);
+        let result = with_fs_lock_retry(|| -> std::io::Result<()> {
+            attempts.set(attempts.get() + 1);
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+        });
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 1);
     }
 
     #[test]

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-alpha.16 - 2026-07-22
+
+- Retries the install/update payload transaction against transient Windows file locks so installs no longer die with `拒绝访问。 (os error 5); rollback also failed` on machines where an antivirus scanner briefly opens a freshly written executable, or a just-terminated Bridge process has not released its handle yet. The remove/rename/copy steps in `apply`, `rollback`, and `replace_file` now retry for up to ten seconds on `ERROR_ACCESS_DENIED` (5) and `ERROR_SHARING_VIOLATION` (32), while non-transient errors still fail immediately.
+- Adds unit coverage for the transient-lock retry helper: it recovers after repeated access-denied errors and gives up at once on unrelated errors.
+
 ## 2.0.0-alpha.15 - 2026-07-21
 
 - Steers connected agents toward the correct execution pattern via the `local_exec.execute` tool description: `execute` blocks and is only for short tasks, while long-running work (npm install, large recursive scans, downloads) should use `request_run` + `run` and poll `job_status`/`job_output`, which is not bound by the request timeout. Also documents that a child process started with a bare `Start-Process` detaches and its stdout is not captured; run it inline or with `-NoNewWindow -Wait`. Behavior is unchanged; this is guidance only.
