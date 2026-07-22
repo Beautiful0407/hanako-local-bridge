@@ -345,6 +345,7 @@ impl PayloadTransaction {
     }
 
     fn apply_inner(&self) -> anyhow::Result<()> {
+        sweep_displaced_files(&self.install_root);
         let new_files = manifest_files(&self.new_manifest)?;
         let old_files = self
             .old_manifest
@@ -364,7 +365,7 @@ impl PayloadTransaction {
         for relative in old_files.difference(&new_files) {
             let target = self.install_root.join(relative_path(relative));
             if target.is_file() {
-                remove_file_with_retry(&target)?;
+                displace_existing_file(&target)?;
             }
         }
         copy_file_atomic(
@@ -866,10 +867,70 @@ fn copy_file_atomic(source: &Path, destination: &Path) -> anyhow::Result<()> {
 
 fn replace_file(source: &Path, destination: &Path) -> anyhow::Result<()> {
     if destination.exists() {
-        remove_file_with_retry(destination)?;
+        displace_existing_file(destination)?;
     }
     rename_with_retry(source, destination)?;
     Ok(())
+}
+
+// Suffix marking a live file we could not delete during install because a
+// running process still maps it. It is renamed aside so the new file can take
+// its place, then swept on the next install once the process has exited.
+const DISPLACED_SUFFIX: &str = "hanako-old";
+
+// Removes a managed file that is about to be overwritten. On Windows a running
+// executable keeps an exclusive image lock on its own file for the whole life
+// of the process: the file cannot be deleted (ERROR_ACCESS_DENIED, os error 5),
+// but it *can* be renamed. So if deletion keeps failing on a lock, rename the
+// live file aside instead. The running process keeps mapping the renamed image
+// and picks up the new file only on its next launch, so the install no longer
+// depends on that process having already exited.
+fn displace_existing_file(destination: &Path) -> anyhow::Result<()> {
+    match with_fs_lock_retry(|| fs::remove_file(destination)) {
+        Ok(()) => Ok(()),
+        Err(error) if is_transient_lock(&error) => {
+            let aside = displaced_sidecar_path(destination);
+            let _ = fs::remove_file(&aside);
+            fs::rename(destination, &aside).with_context(|| {
+                format!(
+                    "cannot displace locked file {} to {}",
+                    destination.display(),
+                    aside.display()
+                )
+            })?;
+            Ok(())
+        }
+        Err(error) => {
+            Err(anyhow::Error::new(error)
+                .context(format!("cannot remove {}", destination.display())))
+        }
+    }
+}
+
+fn displaced_sidecar_path(destination: &Path) -> PathBuf {
+    let mut name = destination
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    name.push('.');
+    name.push_str(DISPLACED_SUFFIX);
+    destination.with_file_name(name)
+}
+
+// Sweeps sidecar files left by a previous install whose running process has
+// since exited, so displaced images do not accumulate. Best-effort: a file
+// still locked by a not-yet-restarted process is left for the next sweep.
+fn sweep_displaced_files(install_root: &Path) {
+    let Ok(entries) = fs::read_dir(install_root) else {
+        return;
+    };
+    let sidecar_suffix = format!(".{DISPLACED_SUFFIX}");
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().ends_with(&sidecar_suffix) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
 }
 
 const FS_LOCK_RETRY_TIMEOUT: Duration = Duration::from_secs(10);
@@ -1079,6 +1140,79 @@ mod tests {
         });
         assert!(result.is_err());
         assert_eq!(attempts.get(), 1);
+    }
+
+    #[test]
+    fn displaced_sidecar_path_appends_marker_next_to_original() {
+        let path = Path::new("C:/install/hanako-bridge.exe");
+        assert_eq!(
+            displaced_sidecar_path(path),
+            Path::new("C:/install/hanako-bridge.exe.hanako-old")
+        );
+    }
+
+    #[test]
+    fn sweep_displaced_files_removes_only_sidecars() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+        fs::write(root.join("hanako-bridge.exe"), "live").unwrap();
+        fs::write(root.join("hanako-bridge.exe.hanako-old"), "stale").unwrap();
+        fs::write(root.join("hanako-manager.exe.hanako-old"), "stale2").unwrap();
+        fs::write(root.join("config.json"), "cfg").unwrap();
+        sweep_displaced_files(root);
+        assert!(root.join("hanako-bridge.exe").is_file());
+        assert!(root.join("config.json").is_file());
+        assert!(!root.join("hanako-bridge.exe.hanako-old").exists());
+        assert!(!root.join("hanako-manager.exe.hanako-old").exists());
+    }
+
+    // Regression for the install failure where a still-running hanako-bridge.exe
+    // held its own image lock: deletion is impossible (os error 5) but the file
+    // can be renamed aside so the new binary takes its place. Locks the target
+    // with a real running child process, then asserts the overwrite succeeds and
+    // the live file was displaced rather than the install aborting.
+    #[cfg(windows)]
+    #[test]
+    fn replace_file_displaces_a_binary_locked_by_a_running_process() {
+        use std::process::Command as StdCommand;
+
+        let temp = tempdir().unwrap();
+        let install = temp.path().join("install");
+        fs::create_dir_all(&install).unwrap();
+        let target = install.join("locked.exe");
+        // A real executable that stays alive so its image stays locked. ping
+        // keeps running without needing a console or stdin, unlike timeout.exe.
+        let system_exe = PathBuf::from(env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("ping.exe");
+        fs::copy(&system_exe, &target).unwrap();
+        let mut child = StdCommand::new(&target)
+            .args(["127.0.0.1", "-n", "30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        // Give the child time to map its image.
+        thread::sleep(Duration::from_millis(400));
+        // Sanity check: a plain delete must fail while the process runs.
+        assert!(
+            fs::remove_file(&target).is_err(),
+            "expected the running image to be undeletable"
+        );
+
+        let source = temp.path().join("new.exe");
+        fs::write(&source, "new binary").unwrap();
+        replace_file(&source, &target).unwrap();
+
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new binary");
+        assert!(
+            install.join("locked.exe.hanako-old").is_file(),
+            "the locked file should have been displaced aside"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     #[test]

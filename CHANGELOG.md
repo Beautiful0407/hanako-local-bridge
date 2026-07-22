@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0-alpha.17 - 2026-07-22
+
+- Fixes the real root cause behind the `cannot remove ...\hanako-bridge.exe: 拒绝访问。 (os error 5); rollback also failed` install failure. A still-running `hanako-bridge.exe` holds an exclusive image lock on its own file for its whole lifetime, so the file can never be deleted while that process lives — the alpha.16 timed retry could not help because the lock is not transient. On a machine where `stop_installed_service_and_processes` fails to terminate the old Bridge (for example when it cannot resolve the process's executable path), the overwrite hit that permanent lock and aborted the whole install and its rollback.
+- Overwriting a managed file now falls back to renaming the locked original aside to a `.hanako-old` sidecar (renaming a running image is allowed on Windows even though deleting it is not), then puts the new file in place. The running process keeps mapping the displaced image and picks up the new binary on its next launch, so installs no longer depend on the old process having already exited. Leftover sidecars are swept at the start of the next install once their process has exited.
+- Adds a regression test that locks a binary with a real running process, then asserts the overwrite succeeds and the live file is displaced instead of the install failing, plus sidecar-path and sweep unit coverage.
+
 ## 2.0.0-alpha.16 - 2026-07-22
 
 - Retries the install/update payload transaction against transient Windows file locks so installs no longer die with `拒绝访问。 (os error 5); rollback also failed` on machines where an antivirus scanner briefly opens a freshly written executable, or a just-terminated Bridge process has not released its handle yet. The remove/rename/copy steps in `apply`, `rollback`, and `replace_file` now retry for up to ten seconds on `ERROR_ACCESS_DENIED` (5) and `ERROR_SHARING_VIOLATION` (32), while non-transient errors still fail immediately.
