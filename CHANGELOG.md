@@ -1,6 +1,8 @@
 # Changelog
 
-## 2.0.0-alpha.19 - 2026-07-23
+## 2.0.0-alpha.20 - 2026-07-23
+
+(alpha.19 was never a valid release: its packaged binaries were built before the version bump and reported 2.0.0-alpha.18 internally, which would break the update version check. alpha.20 is the first correct build of the changes below. The alpha.19 tag and prerelease were withdrawn.)
 
 - Fixes the install/update regression alpha.18 introduced: stopping the bridge before an install ran `schtasks /Change /TN <task> /DISABLE`, but that verb is rejected as `参数错误 (The parameter is incorrect)` on some Windows versions, so the service repair exited with 1 and the whole install rolled back. The install/repair path and the installer's process-stop path now delete the scheduled task (`schtasks /Delete /F`) before stopping the bridge instead of disabling it; the task is recreated from scratch by the subsequent `/Create /F`, so deleting is safe and still severs the per-minute trigger that would otherwise relaunch the bridge and lock the ports. The regression test now verifies the task is deleted without a parameter error.
 - Adds a "绑定设备" (bind device) button to the manager's diagnostics page. Claiming a device requires a logged-in Hana web session (`bridge.manage` scope) that the bridge deliberately never holds, so it cannot claim itself; the button opens the browser claim page (`<cloud-host>/desktop/`, derived from the configured cloud URL) in the default browser, where the claim completes and the cloud pushes the credential back over the WebSocket. The button appears only while the device is `pending_claim`, and the panel polls for up to a minute afterward so it flips to active on its own. Adds a new `/api/manager/open-claim` endpoint and a `claim_url_from_cloud` helper with unit coverage.

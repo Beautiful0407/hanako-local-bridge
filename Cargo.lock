@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-bootstrap"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "embed-resource",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-bridge"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "axum",
@@ -1361,7 +1361,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-bridge-core"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "base64",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-device-router"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "axum",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-maintenance"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "base64",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "hanako-manager"
-version = "2.0.0-alpha.19"
+version = "2.0.0-alpha.20"
 dependencies = [
  "anyhow",
  "hanako-bridge-core",
