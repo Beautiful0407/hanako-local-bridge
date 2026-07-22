@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.0-alpha.15 - 2026-07-21
+
+- Steers connected agents toward the correct execution pattern via the `local_exec.execute` tool description: `execute` blocks and is only for short tasks, while long-running work (npm install, large recursive scans, downloads) should use `request_run` + `run` and poll `job_status`/`job_output`, which is not bound by the request timeout. Also documents that a child process started with a bare `Start-Process` detaches and its stdout is not captured; run it inline or with `-NoNewWindow -Wait`. Behavior is unchanged; this is guidance only.
+
 ## 2.0.0-alpha.14 - 2026-07-21
 
 - Keeps the cloud WebSocket connection alive during long-running RPC calls. The connection loop previously awaited each `rpc_request` inline, so a slow tool call (an npm install, a large recursive directory scan, a long script) froze the heartbeat/ping loop for the whole call and the server dropped the connection as dead. RPC handling is now dispatched to its own task, with responses delivered through an outbound channel, while the loop keeps servicing heartbeats and pings.
