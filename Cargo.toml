@@ -10,7 +10,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "2.0.0-alpha.17"
+version = "2.0.0-alpha.18"
 edition = "2024"
 license = "UNLICENSED"
 rust-version = "1.97"
@@ -47,7 +47,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2"
 winreg = "0.55"
 winit = "0.30"
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Globalization", "Win32_UI_WindowsAndMessaging"] }
 wry = "0.55"
 zip = { version = "8.1", default-features = false, features = ["deflate"] }
 

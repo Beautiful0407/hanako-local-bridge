@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-alpha.18 - 2026-07-23
+
+- Fixes install/update failing with `timed out waiting for local port 8787 to be released` (and the earlier `os error 5` file-lock variant) on machines upgrading from an older build. The service scheduled task carries a per-minute repeat trigger, so ending the running bridge with `schtasks /End` alone let the trigger relaunch it within a minute, keeping the executable and ports 8787/8788 locked; the overwrite and the subsequent service repair then timed out. The install/repair path and the installer's process-stop path now disable the scheduled task (`schtasks /Change /DISABLE`) before stopping the bridge, so the killed process stays down until the fresh task is recreated. Adds a real-scheduled-task regression test that a disabled task no longer reports Enabled.
+- Decodes output from Windows console programs (`schtasks.exe`, `whoami.exe`) using the system ANSI code page instead of assuming UTF-8. On localized Windows their error text is in the local code page (for example GBK on Simplified Chinese), so `String::from_utf8_lossy` turned every non-ASCII byte into `?` and erased the real cause in the failure dialog (`Error: ????: ????????`). Error paths in the service, manager, and updater now render localized system errors readably. Adds a shared `decode_console_bytes` helper in the core crate, wired for Windows only so the Linux device router is unaffected.
+
 ## 2.0.0-alpha.17 - 2026-07-22
 
 - Fixes the real root cause behind the `cannot remove ...\hanako-bridge.exe: 拒绝访问。 (os error 5); rollback also failed` install failure. A still-running `hanako-bridge.exe` holds an exclusive image lock on its own file for its whole lifetime, so the file can never be deleted while that process lives — the alpha.16 timed retry could not help because the lock is not transient. On a machine where `stop_installed_service_and_processes` fails to terminate the old Bridge (for example when it cannot resolve the process's executable path), the overwrite hit that permanent lock and aborted the whole install and its rollback.

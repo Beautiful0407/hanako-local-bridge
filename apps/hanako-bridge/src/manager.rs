@@ -14,6 +14,7 @@ use axum::{
 };
 use hanako_bridge_core::{
     config::{RootConfig, RootMode, effective_update_channel, effective_update_manifest},
+    decode_console_bytes,
     device::clean_device_id,
     store::write_json_atomic,
 };
@@ -499,9 +500,9 @@ fn maintenance_json(executable: &Path, arguments: &[std::ffi::OsString]) -> anyh
         .stdin(Stdio::null())
         .creation_flags(CREATE_NO_WINDOW)
         .output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = decode_console_bytes(&output.stdout).trim().to_string();
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stderr = decode_console_bytes(&output.stderr).trim().to_string();
         anyhow::bail!("{}", if stderr.is_empty() { stdout } else { stderr });
     }
     serde_json::from_str(&stdout)

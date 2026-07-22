@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::{Context, ensure};
 use hanako_bridge_core::{
-    RuntimeConfig,
+    RuntimeConfig, decode_console_bytes,
     update::{
         PayloadManifest, UpdateManifest, normalize_relative_path, read_payload_manifest,
         sha256_file, sign_manifest, update_available, validate_payload_manifest,
@@ -670,6 +670,14 @@ fn stop_legacy_scheduled_tasks(install_root: &Path) {
         return;
     }
     for task_name in [format!("{prefix} MCP"), format!("{prefix} Tunnel")] {
+        // Disable before ending: the service task carries a per-minute repeat
+        // trigger, so `/End` alone lets it relaunch the bridge within a minute
+        // and keep the ports and executable locked. Disabling stops the trigger
+        // so the process we kill next stays dead until the fresh install
+        // recreates the task.
+        let _ = hidden_command(Path::new("schtasks.exe"))
+            .args(["/Change", "/TN", &task_name, "/DISABLE"])
+            .status();
         let _ = hidden_command(Path::new("schtasks.exe"))
             .args(["/End", "/TN", &task_name])
             .status();
@@ -708,8 +716,8 @@ pub fn start_installed_service(install_root: &Path) -> anyhow::Result<()> {
         .output()
         .context("cannot launch installed bridge service repair")?;
     if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = decode_console_bytes(&output.stdout).trim().to_string();
+        let stderr = decode_console_bytes(&output.stderr).trim().to_string();
         anyhow::bail!(
             "installed bridge service repair exited with {}{}{}",
             output.status.code().unwrap_or(1),

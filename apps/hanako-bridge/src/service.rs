@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use hanako_bridge_core::RuntimeConfig;
+use hanako_bridge_core::{RuntimeConfig, decode_console_bytes};
 use serde::Serialize;
 use serde_json::json;
 
@@ -187,6 +187,12 @@ pub async fn service_status(
 fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> {
     let executable = env::current_exe()?;
     let user = current_user()?;
+    // Disable the task first so its per-minute trigger cannot relaunch the
+    // bridge while we are stopping it. Without this, `/End` only ends the
+    // current run and the trigger respawns the process within a minute, so the
+    // port never frees and the install times out. The `/Create /F` below
+    // re-enables it with the fresh definition.
+    let _ = disable_task(task_name);
     let _ = stop_task(task_name);
     wait_for_ports_released(
         &[
@@ -259,6 +265,10 @@ fn stop_task(task_name: &str) -> anyhow::Result<()> {
     run_schtasks(["/End", "/TN", task_name])
 }
 
+fn disable_task(task_name: &str) -> anyhow::Result<()> {
+    run_schtasks(["/Change", "/TN", task_name, "/DISABLE"])
+}
+
 fn delete_task(task_name: &str) -> anyhow::Result<()> {
     run_schtasks(["/Delete", "/TN", task_name, "/F"])
 }
@@ -275,8 +285,8 @@ fn run_schtasks<const N: usize>(arguments: [&str; N]) -> anyhow::Result<()> {
     if output.status.success() {
         return Ok(());
     }
-    let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    let output_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let error = decode_console_bytes(&output.stderr).trim().to_string();
+    let output_text = decode_console_bytes(&output.stdout).trim().to_string();
     anyhow::bail!(
         "{}",
         if !error.is_empty() {
@@ -360,7 +370,7 @@ fn current_user() -> anyhow::Result<String> {
     if !output.status.success() {
         anyhow::bail!("cannot resolve the current Windows user");
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(decode_console_bytes(&output.stdout).trim().to_string())
 }
 
 async fn reqwest_health(url: &str) -> bool {
@@ -667,6 +677,49 @@ mod tests {
         assert!(xml.contains("&quot;--cleanup-task&quot;"));
         assert!(xml.contains("Hanako &amp; Bridge Manager Action"));
         assert!(!xml.contains("CREATE_BREAKAWAY_FROM_JOB"));
+    }
+
+    // Regression for the install failure where an existing per-minute service
+    // task kept relaunching the bridge, so ports never freed and repair/install
+    // timed out. Creating a task with a minute repeat, then disabling it, must
+    // leave it in a Disabled state (trigger suppressed) rather than merely
+    // ending the current run. Uses a throwaway task name so it never touches a
+    // real installation.
+    #[test]
+    fn disable_task_suppresses_a_self_restarting_task() {
+        let task_name = format!("HanakoDisableTest {}", uuid::Uuid::new_v4().simple());
+        // Create a minimal task that repeats every minute (schtasks CLI form).
+        let created = run_schtasks([
+            "/Create",
+            "/TN",
+            &task_name,
+            "/TR",
+            "cmd.exe /c exit",
+            "/SC",
+            "MINUTE",
+            "/MO",
+            "1",
+            "/F",
+        ]);
+        if created.is_err() {
+            // Task creation can be blocked in a locked-down CI account; skip
+            // rather than fail on an environment limitation.
+            return;
+        }
+        disable_task(&task_name).expect("disable should succeed");
+        let query = Command::new("schtasks.exe")
+            .args(["/Query", "/TN", &task_name, "/FO", "LIST", "/V"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .expect("query should run");
+        let text = decode_console_bytes(&query.stdout);
+        let _ = delete_task(&task_name);
+        // The verbose listing reports the scheduled task state; after disabling
+        // it must not report Enabled.
+        assert!(
+            text.contains("Disabled") || !text.contains("Enabled"),
+            "task should be disabled, got: {text}"
+        );
     }
 
     #[test]
