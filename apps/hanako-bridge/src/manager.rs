@@ -13,7 +13,10 @@ use axum::{
     routing::{get, post},
 };
 use hanako_bridge_core::{
-    config::{RootConfig, RootMode, effective_update_channel, effective_update_manifest},
+    config::{
+        RootConfig, RootMode, claim_url_from_cloud, effective_update_channel,
+        effective_update_manifest,
+    },
     decode_console_bytes,
     device::clean_device_id,
     store::write_json_atomic,
@@ -40,6 +43,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/manager/settings", post(save_settings))
         .route("/api/manager/update/check", get(check_update))
         .route("/api/manager/update/install", post(install_update))
+        .route("/api/manager/open-claim", post(open_claim))
         .route("/api/manager/logs", get(logs))
         .route("/api/manager/logs/{*path}", get(log_tail))
 }
@@ -306,6 +310,37 @@ async fn install_update(
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": error.to_string() })),
+        ),
+    }
+}
+
+// Opens the browser claim page in the user's default browser. Claiming requires
+// a logged-in Hana web session (bridge.manage scope), which the bridge
+// deliberately never holds, so the bridge cannot claim itself; the most it can
+// do is take the user to the claim page. The page reads this bridge's identity
+// from the loopback approval port and completes the claim server-side, after
+// which the cloud pushes the credential back over the WebSocket.
+async fn open_claim(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
+    if !authorized(&state, &headers) {
+        return forbidden();
+    }
+    let url = claim_url_from_cloud(&state.runtime.config.cloud.url);
+    // `cmd /C start "" <url>` opens the default browser. The empty "" is the
+    // window-title argument `start` expects first; without it a quoted URL is
+    // taken as the title and no page opens. spawn (not output) so we do not
+    // block on the browser process.
+    let spawn_result = Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match spawn_result {
+        Ok(_) => (StatusCode::OK, Json(json!({ "ok": true, "url": url }))),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("cannot open claim page: {error}") })),
         ),
     }
 }

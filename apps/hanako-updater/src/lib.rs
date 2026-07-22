@@ -670,13 +670,15 @@ fn stop_legacy_scheduled_tasks(install_root: &Path) {
         return;
     }
     for task_name in [format!("{prefix} MCP"), format!("{prefix} Tunnel")] {
-        // Disable before ending: the service task carries a per-minute repeat
+        // Delete before ending: the service task carries a per-minute repeat
         // trigger, so `/End` alone lets it relaunch the bridge within a minute
-        // and keep the ports and executable locked. Disabling stops the trigger
+        // and keep the ports and executable locked. Deleting stops the trigger
         // so the process we kill next stays dead until the fresh install
-        // recreates the task.
+        // recreates the task. We delete rather than `/Change /DISABLE` because
+        // that verb is rejected as "The parameter is incorrect" on some Windows
+        // versions; the reinstall recreates the task, so the delete is safe.
         let _ = hidden_command(Path::new("schtasks.exe"))
-            .args(["/Change", "/TN", &task_name, "/DISABLE"])
+            .args(["/Delete", "/TN", &task_name, "/F"])
             .status();
         let _ = hidden_command(Path::new("schtasks.exe"))
             .args(["/End", "/TN", &task_name])

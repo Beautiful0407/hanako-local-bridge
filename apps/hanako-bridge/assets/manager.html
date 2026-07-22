@@ -140,6 +140,7 @@
           <button class="primary" data-action="repair">检测并修复</button>
           <button data-action="restart">重启服务</button>
           <button class="danger" data-action="stop">停止服务</button>
+          <button class="primary" id="claim-button" hidden>绑定设备</button>
         </div>
         <div class="message" id="diagnostic-message"></div>
       </div>
@@ -344,6 +345,17 @@ function render(data) {
   document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(checkNameText(item.code))}</td><td><span class="badge ${checkStatusClass(item.status)}">${esc(checkStatusText(item.status))}</span></td><td>${esc(checkDetailText(item))}</td></tr>`).join("");
   document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(rootModeText(root.mode))}</td><td>${esc(rootSourceText(root.source))}</td></tr>`).join("");
   fillSettings(data.settings);
+  updateClaimButton(data.cloud?.status);
+}
+
+// The "绑定设备" button only makes sense while the device is waiting to be
+// claimed. Show it on pending_claim, hide it once active (or when cloud is
+// disabled/unknown), so it does not clutter the panel when there is nothing to
+// bind.
+function updateClaimButton(cloudStatus) {
+  const button = document.getElementById("claim-button");
+  if (!button) return;
+  button.hidden = cloudStatus !== "pending_claim";
 }
 
 function fillSettings(settings) {
@@ -518,6 +530,39 @@ document.querySelectorAll("[data-action]").forEach(button => button.onclick = as
     actionButtons.forEach(item => item.disabled = false);
   }
 });
+document.getElementById("claim-button").onclick = async () => {
+  const button = document.getElementById("claim-button");
+  button.disabled = true;
+  try {
+    await api("/api/manager/open-claim", { method: "POST" });
+    setMessage("diagnostic-message", "已在浏览器打开认领页，请用 Hana 账号登录完成绑定。", "warning");
+    pollForClaim();
+  } catch (error) {
+    setMessage("diagnostic-message", friendlyError(error), "error");
+  } finally {
+    button.disabled = false;
+  }
+};
+// After the user opens the claim page, the cloud pushes the credential back
+// over the WebSocket and the bridge flips to active on its own. Poll the
+// snapshot for up to a minute so the panel reflects the new state without the
+// user having to click 检测. One poller at a time.
+let claimPollGeneration = 0;
+async function pollForClaim() {
+  const generation = ++claimPollGeneration;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await delay(5000);
+    if (generation !== claimPollGeneration) return;
+    let data;
+    try { data = await api("/api/manager/snapshot"); }
+    catch { continue; }
+    render(data);
+    if (data.cloud?.status === "active") {
+      setMessage("diagnostic-message", "设备已绑定，云端连接正常。", "success");
+      return;
+    }
+  }
+}
 document.getElementById("settings-form").onsubmit = async event => {
   event.preventDefault();
   const message = document.getElementById("settings-message");

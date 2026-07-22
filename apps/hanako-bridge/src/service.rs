@@ -187,12 +187,14 @@ pub async fn service_status(
 fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> {
     let executable = env::current_exe()?;
     let user = current_user()?;
-    // Disable the task first so its per-minute trigger cannot relaunch the
-    // bridge while we are stopping it. Without this, `/End` only ends the
-    // current run and the trigger respawns the process within a minute, so the
-    // port never frees and the install times out. The `/Create /F` below
-    // re-enables it with the fresh definition.
-    let _ = disable_task(task_name);
+    // Delete the task first so its per-minute trigger cannot relaunch the
+    // bridge while we are stopping it. `/End` only ends the current run and the
+    // trigger respawns the process within a minute, so the port never frees and
+    // the install times out. We delete rather than `/Change /DISABLE` because
+    // that verb is rejected as "The parameter is incorrect" on some Windows
+    // versions. The `/Create /F` below recreates the task from scratch, so the
+    // delete is safe.
+    let _ = delete_task(task_name);
     let _ = stop_task(task_name);
     wait_for_ports_released(
         &[
@@ -263,10 +265,6 @@ fn start_task(task_name: &str) -> anyhow::Result<()> {
 
 fn stop_task(task_name: &str) -> anyhow::Result<()> {
     run_schtasks(["/End", "/TN", task_name])
-}
-
-fn disable_task(task_name: &str) -> anyhow::Result<()> {
-    run_schtasks(["/Change", "/TN", task_name, "/DISABLE"])
 }
 
 fn delete_task(task_name: &str) -> anyhow::Result<()> {
@@ -681,13 +679,13 @@ mod tests {
 
     // Regression for the install failure where an existing per-minute service
     // task kept relaunching the bridge, so ports never freed and repair/install
-    // timed out. Creating a task with a minute repeat, then disabling it, must
-    // leave it in a Disabled state (trigger suppressed) rather than merely
-    // ending the current run. Uses a throwaway task name so it never touches a
-    // real installation.
+    // timed out. install_task deletes the task before stopping the bridge, so
+    // the trigger cannot respawn it; the delete must succeed (and not fail with
+    // "The parameter is incorrect", which /Change /DISABLE did on some Windows
+    // versions). Uses a throwaway task name so it never touches a real install.
     #[test]
-    fn disable_task_suppresses_a_self_restarting_task() {
-        let task_name = format!("HanakoDisableTest {}", uuid::Uuid::new_v4().simple());
+    fn delete_task_removes_a_self_restarting_task() {
+        let task_name = format!("HanakoDeleteTest {}", uuid::Uuid::new_v4().simple());
         // Create a minimal task that repeats every minute (schtasks CLI form).
         let created = run_schtasks([
             "/Create",
@@ -706,19 +704,11 @@ mod tests {
             // rather than fail on an environment limitation.
             return;
         }
-        disable_task(&task_name).expect("disable should succeed");
-        let query = Command::new("schtasks.exe")
-            .args(["/Query", "/TN", &task_name, "/FO", "LIST", "/V"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .expect("query should run");
-        let text = decode_console_bytes(&query.stdout);
-        let _ = delete_task(&task_name);
-        // The verbose listing reports the scheduled task state; after disabling
-        // it must not report Enabled.
+        delete_task(&task_name).expect("delete should succeed without a parameter error");
+        // After deletion the task must no longer exist.
         assert!(
-            text.contains("Disabled") || !text.contains("Enabled"),
-            "task should be disabled, got: {text}"
+            !task_exists(&task_name),
+            "task should be gone after delete_task"
         );
     }
 

@@ -16,6 +16,34 @@ pub const OFFICIAL_UPDATE_MANIFEST: &str =
     "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json";
 pub const OFFICIAL_ALPHA_UPDATE_MANIFEST: &str =
     "https://154-201-69-202.sslip.io/local-bridge/releases/alpha/update-manifest.json";
+pub const OFFICIAL_CLAIM_URL: &str = "https://154-201-69-202.sslip.io/desktop/";
+
+/// Derives the browser claim page URL from the cloud WebSocket URL.
+///
+/// The device is claimed in a logged-in Hana web session at `<host>/desktop/`,
+/// which reads the local bridge's identity and posts it to the cloud. We derive
+/// that page from the configured cloud URL (`wss://host/local-bridge/connect`)
+/// by mapping the scheme (`wss`→`https`, `ws`→`http`) and pointing at
+/// `/desktop/` on the same host, so a custom deployment's claim page follows
+/// its own cloud host. Falls back to the official URL if the cloud URL cannot
+/// be parsed or has no host.
+pub fn claim_url_from_cloud(cloud_url: &str) -> String {
+    let Ok(parsed) = url::Url::parse(cloud_url) else {
+        return OFFICIAL_CLAIM_URL.to_string();
+    };
+    let scheme = match parsed.scheme() {
+        "wss" | "https" => "https",
+        "ws" | "http" => "http",
+        _ => return OFFICIAL_CLAIM_URL.to_string(),
+    };
+    let Some(host) = parsed.host_str() else {
+        return OFFICIAL_CLAIM_URL.to_string();
+    };
+    match parsed.port() {
+        Some(port) => format!("{scheme}://{host}:{port}/desktop/"),
+        None => format!("{scheme}://{host}/desktop/"),
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -549,5 +577,32 @@ mod tests {
             "https://updates.example.test/custom.json"
         );
         assert_eq!(effective_update_channel(&update, "2.0.0-alpha.7"), "stable");
+    }
+
+    #[test]
+    fn claim_url_is_derived_from_the_cloud_host() {
+        assert_eq!(
+            claim_url_from_cloud(OFFICIAL_CLOUD_URL),
+            "https://154-201-69-202.sslip.io/desktop/"
+        );
+        assert_eq!(
+            claim_url_from_cloud("wss://cloud.example.test/local-bridge/connect"),
+            "https://cloud.example.test/desktop/"
+        );
+        assert_eq!(
+            claim_url_from_cloud("ws://192.168.1.5:8080/local-bridge/connect"),
+            "http://192.168.1.5:8080/desktop/"
+        );
+    }
+
+    #[test]
+    fn claim_url_falls_back_on_unparseable_or_unhosted_cloud_url() {
+        assert_eq!(claim_url_from_cloud("not a url"), OFFICIAL_CLAIM_URL);
+        assert_eq!(claim_url_from_cloud(""), OFFICIAL_CLAIM_URL);
+        // A scheme we do not map should fall back rather than emit garbage.
+        assert_eq!(
+            claim_url_from_cloud("ftp://example.test/x"),
+            OFFICIAL_CLAIM_URL
+        );
     }
 }
