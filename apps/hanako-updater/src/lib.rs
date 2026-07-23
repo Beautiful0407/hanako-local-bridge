@@ -616,6 +616,12 @@ pub fn stop_installed_service_and_processes(install_root: &Path) -> anyhow::Resu
     }
     let install_root = absolute(install_root)?;
     stop_legacy_scheduled_tasks(&install_root);
+    // Port-ownership fallback: sysinfo below skips any process whose exe path it
+    // cannot resolve on Windows (exiting process, insufficient rights, detached
+    // child), so the loop can miss the bridge that still holds the ports and
+    // wait_for_ports_released then times out. Kill whoever actually listens on
+    // the configured MCP/approval ports, by PID, before the sysinfo sweep.
+    kill_listeners_on_configured_ports(&install_root);
     let current_pid = std::process::id();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
@@ -684,6 +690,74 @@ fn stop_legacy_scheduled_tasks(install_root: &Path) {
             .args(["/End", "/TN", &task_name])
             .status();
     }
+}
+
+// Kills whatever process is currently LISTENING on the install's MCP/approval
+// ports, by PID. This is the fallback for the sysinfo sweep, which misses
+// processes whose exe path it cannot read. Ports come from the installed
+// config; falls back to the official defaults if it cannot be loaded.
+fn kill_listeners_on_configured_ports(install_root: &Path) {
+    let (mcp_port, approval_port) = match RuntimeConfig::load(install_root, None) {
+        Ok(runtime) => (
+            runtime.config.filesystem.port,
+            runtime.config.filesystem.approval_port,
+        ),
+        Err(_) => (8787, 8788),
+    };
+    let output = match hidden_command(Path::new("netstat.exe"))
+        .args(["-ano", "-p", "TCP"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return,
+    };
+    let text = decode_console_bytes(&output.stdout);
+    let current_pid = std::process::id();
+    for pid in parse_netstat_listening_pids(&text, &[mcp_port, approval_port]) {
+        if pid == current_pid {
+            continue;
+        }
+        let _ = hidden_command(Path::new("taskkill.exe"))
+            .args(["/PID", &pid.to_string(), "/F"])
+            .status();
+    }
+}
+
+// Parses `netstat -ano` output and returns the PIDs LISTENING on any of the
+// given local ports. Only LISTENING rows count (an outbound connection to the
+// same port number must not be killed). Handles IPv4 `127.0.0.1:PORT` and IPv6
+// `[::1]:PORT` / `[::]:PORT` local-address forms.
+fn parse_netstat_listening_pids(output: &str, ports: &[u16]) -> Vec<u32> {
+    let mut pids = Vec::new();
+    for line in output.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        // Layout: Proto  Local-Address  Foreign-Address  State  PID
+        if fields.len() < 5 {
+            continue;
+        }
+        if !fields[0].eq_ignore_ascii_case("TCP") {
+            continue;
+        }
+        if !fields[3].eq_ignore_ascii_case("LISTENING") {
+            continue;
+        }
+        let local = fields[1];
+        let Some(colon) = local.rfind(':') else {
+            continue;
+        };
+        let Ok(port) = local[colon + 1..].parse::<u16>() else {
+            continue;
+        };
+        if !ports.contains(&port) {
+            continue;
+        }
+        if let Ok(pid) = fields[4].parse::<u32>()
+            && !pids.contains(&pid)
+        {
+            pids.push(pid);
+        }
+    }
+    pids
 }
 
 fn command_references_path(command: &[std::ffi::OsString], path: &Path) -> bool {
@@ -1489,5 +1563,34 @@ mod tests {
 
         assert_eq!(fs::metadata(&destination).unwrap().len(), expected_size);
         assert_eq!(sha256_file(&destination).unwrap(), expected_sha256);
+    }
+
+    #[test]
+    fn netstat_parse_picks_only_listening_pids_on_target_ports() {
+        // Real-ish netstat -ano output: IPv4/IPv6 LISTENING on 8787/8788, plus
+        // an ESTABLISHED row to 8787 (a client, must NOT be killed) and an
+        // unrelated listener on 9999 (must be ignored).
+        let sample = "\
+Active Connections
+
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    127.0.0.1:8787         0.0.0.0:0              LISTENING       15844
+  TCP    127.0.0.1:8788         0.0.0.0:0              LISTENING       15844
+  TCP    [::1]:8787             [::]:0                 LISTENING       15844
+  TCP    127.0.0.1:9999         0.0.0.0:0              LISTENING       4242
+  TCP    127.0.0.1:53210        127.0.0.1:8787        ESTABLISHED     7777
+  TCP    127.0.0.1:8788         127.0.0.1:53211       ESTABLISHED     8888
+";
+        let pids = parse_netstat_listening_pids(sample, &[8787, 8788]);
+        assert_eq!(pids, vec![15844]);
+        assert!(!pids.contains(&4242), "unrelated port 9999 must be ignored");
+        assert!(!pids.contains(&7777), "outbound client to 8787 must not match");
+        assert!(!pids.contains(&8888), "ESTABLISHED on 8788 must not match");
+    }
+
+    #[test]
+    fn netstat_parse_empty_when_no_listeners() {
+        let sample = "  TCP    127.0.0.1:9999   0.0.0.0:0   LISTENING   4242\n";
+        assert!(parse_netstat_listening_pids(sample, &[8787, 8788]).is_empty());
     }
 }

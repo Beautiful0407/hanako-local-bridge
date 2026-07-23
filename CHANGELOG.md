@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-alpha.21 - 2026-07-24
+
+- Makes overwrite installs reliable when a bridge is already running in the target directory (which was failing with `timed out waiting for local port 8787 to be released`, most visibly through the new wizard installer, but also on any plain re-run of `HanakoLocalBridge-Setup.exe`). Root cause: `stop_installed_service_and_processes` killed processes by walking sysinfo and matching each process's exe path against the install root, but on Windows sysinfo often cannot read a process's exe path (exiting process, insufficient rights, detached child) and silently skipped it, so the bridge holding the ports was never killed and `wait_for_ports_released` timed out. Now, before the sysinfo sweep, whoever is actually LISTENING on the configured MCP/approval ports is killed by PID (via `netstat -ano` + `taskkill /PID`), which does not depend on reading exe paths and never targets processes by image name (no risk of killing an unrelated bridge). Adds unit coverage for the netstat parser (only LISTENING rows on the target ports, never outbound connections to the same port number).
+- Adds an optional NSIS wizard installer (`HanakoLocalBridge-Wizard-Setup-<ver>.exe`) as a human-facing download: a welcome / choose-directory / progress / finish wizard whose install section just runs the existing signed Rust installer under the hood, so all the tested install logic is reused. Online updates are unchanged and do not go through the wizard.
+
 ## 2.0.0-alpha.20 - 2026-07-23
 
 (alpha.19 was never a valid release: its packaged binaries were built before the version bump and reported 2.0.0-alpha.18 internally, which would break the update version check. alpha.20 is the first correct build of the changes below. The alpha.19 tag and prerelease were withdrawn.)
