@@ -1,359 +1,359 @@
-# Changelog
+# 变更记录
 
 ## 2.0.0-alpha.22 - 2026-08-05
 
-- Removes the legacy Node.js / PowerShell / VBS / WinUI implementation. The repository now contains only the Rust workspace; rollback is available via Git history.
-- Open-source preparation: adds Apache-2.0 license, rewrites README, removes personal server addresses and environment identifiers.
+- 移除旧版 Node.js / PowerShell / VBS / WinUI 实现。仓库现在只包含 Rust 工作区；回滚可从 Git 历史恢复。
+- 开源准备：新增 Apache-2.0 许可证、重写 README、移除个人服务器地址与环境标识。
 
 ## 2.0.0-alpha.21 - 2026-07-24
 
-- Makes overwrite installs reliable when a bridge is already running in the target directory (which was failing with `timed out waiting for local port 8787 to be released`, most visibly through the new wizard installer, but also on any plain re-run of `HanakoLocalBridge-Setup.exe`). Root cause: `stop_installed_service_and_processes` killed processes by walking sysinfo and matching each process's exe path against the install root, but on Windows sysinfo often cannot read a process's exe path (exiting process, insufficient rights, detached child) and silently skipped it, so the bridge holding the ports was never killed and `wait_for_ports_released` timed out. Now, before the sysinfo sweep, whoever is actually LISTENING on the configured MCP/approval ports is killed by PID (via `netstat -ano` + `taskkill /PID`), which does not depend on reading exe paths and never targets processes by image name (no risk of killing an unrelated bridge). Adds unit coverage for the netstat parser (only LISTENING rows on the target ports, never outbound connections to the same port number).
-- Adds an optional NSIS wizard installer (`HanakoLocalBridge-Wizard-Setup-<ver>.exe`) as a human-facing download: a welcome / choose-directory / progress / finish wizard whose install section just runs the existing signed Rust installer under the hood, so all the tested install logic is reused. Online updates are unchanged and do not go through the wizard.
+- 修复目标目录中已有桥在运行时覆盖安装失败的问题（报 `timed out waiting for local port 8787 to be released`，新向导安装器下最明显，直接重跑 `HanakoLocalBridge-Setup.exe` 也会遇到）。根因：`stop_installed_service_and_processes` 通过遍历 sysinfo 并按进程 exe 路径匹配安装根目录来结束进程，但 Windows 上 sysinfo 经常读不到进程的 exe 路径（进程退出中、权限不足、分离子进程），静默跳过，持有端口的桥从未被结束，`wait_for_ports_released` 超时。现在在 sysinfo 清扫之前，先按 PID 结束真正 LISTENING 在配置的 MCP/审批端口上的进程（通过 `netstat -ano` + `taskkill /PID`），不依赖读取 exe 路径，也绝不会按镜像名匹配进程（不会误杀无关桥）。新增 netstat 解析器单元覆盖（只匹配目标端口上的 LISTENING 行，绝不匹配指向同一端口号的出站连接）。
+- 新增可选的 NSIS 向导安装器（`HanakoLocalBridge-Wizard-Setup-<ver>.exe`）作为面向用户的下载入口：欢迎 / 选择目录 / 进度 / 完成四步向导，安装区段只是内部运行既有签名 Rust 安装器，因此所有已验证的安装逻辑都被复用。在线更新保持不变，不经过向导。
 
 ## 2.0.0-alpha.20 - 2026-07-23
 
-(alpha.19 was never a valid release: its packaged binaries were built before the version bump and reported 2.0.0-alpha.18 internally, which would break the update version check. alpha.20 is the first correct build of the changes below. The alpha.19 tag and prerelease were withdrawn.)
+（alpha.19 从来不是有效发布：其打包二进制在版本 bump 之前构建，内部报告 2.0.0-alpha.18，会破坏更新版本检查。alpha.20 是以下变更的第一个正确构建。alpha.19 的 tag 与预发布已被撤回。）
 
-- Fixes the install/update regression alpha.18 introduced: stopping the bridge before an install ran `schtasks /Change /TN <task> /DISABLE`, but that verb is rejected as `参数错误 (The parameter is incorrect)` on some Windows versions, so the service repair exited with 1 and the whole install rolled back. The install/repair path and the installer's process-stop path now delete the scheduled task (`schtasks /Delete /F`) before stopping the bridge instead of disabling it; the task is recreated from scratch by the subsequent `/Create /F`, so deleting is safe and still severs the per-minute trigger that would otherwise relaunch the bridge and lock the ports. The regression test now verifies the task is deleted without a parameter error.
-- Adds a "绑定设备" (bind device) button to the manager's diagnostics page. Claiming a device requires a logged-in Hana web session (`bridge.manage` scope) that the bridge deliberately never holds, so it cannot claim itself; the button opens the browser claim page (`<cloud-host>/desktop/`, derived from the configured cloud URL) in the default browser, where the claim completes and the cloud pushes the credential back over the WebSocket. The button appears only while the device is `pending_claim`, and the panel polls for up to a minute afterward so it flips to active on its own. Adds a new `/api/manager/open-claim` endpoint and a `claim_url_from_cloud` helper with unit coverage.
+- 修复 alpha.18 引入的安装/更新回归：安装前停止桥会执行 `schtasks /Change /TN <task> /DISABLE`，但该动词在部分 Windows 版本上被拒绝（`参数错误 (The parameter is incorrect)`），导致服务修复以 1 退出、整个安装回滚。安装/修复路径与安装器的进程停止路径现在改为先删除计划任务（`schtasks /Delete /F`）再停止桥，而不是禁用；后续的 `/Create /F` 会从头重建任务，因此删除是安全的，同时切断了会重新拉起桥并锁住端口的每分钟触发器。回归测试现在验证任务被删除且无参数错误。
+- 管理器诊断页新增"绑定设备"按钮。认领设备需要已登录的 Hana 网页会话（`bridge.manage` 作用域），而桥出于设计永不持有该作用域，因此无法自我认领；按钮在默认浏览器中打开认领页（`<cloud-host>/desktop/`，由配置的云端 URL 推导），认领在那里完成，云端通过 WebSocket 把凭证推回。按钮只在设备处于 `pending_claim` 时出现，面板随后最多轮询一分钟，自动翻转为 active。新增 `/api/manager/open-claim` 端点与带单元覆盖的 `claim_url_from_cloud` 辅助函数。
 
 ## 2.0.0-alpha.18 - 2026-07-23
 
-- Fixes install/update failing with `timed out waiting for local port 8787 to be released` (and the earlier `os error 5` file-lock variant) on machines upgrading from an older build. The service scheduled task carries a per-minute repeat trigger, so ending the running bridge with `schtasks /End` alone let the trigger relaunch it within a minute, keeping the executable and ports 8787/8788 locked; the overwrite and the subsequent service repair then timed out. The install/repair path and the installer's process-stop path now disable the scheduled task (`schtasks /Change /DISABLE`) before stopping the bridge, so the killed process stays down until the fresh task is recreated. Adds a real-scheduled-task regression test that a disabled task no longer reports Enabled.
-- Decodes output from Windows console programs (`schtasks.exe`, `whoami.exe`) using the system ANSI code page instead of assuming UTF-8. On localized Windows their error text is in the local code page (for example GBK on Simplified Chinese), so `String::from_utf8_lossy` turned every non-ASCII byte into `?` and erased the real cause in the failure dialog (`Error: ????: ????????`). Error paths in the service, manager, and updater now render localized system errors readably. Adds a shared `decode_console_bytes` helper in the core crate, wired for Windows only so the Linux device router is unaffected.
+- 修复从旧构建升级时安装/更新失败的问题（`timed out waiting for local port 8787 to be released`，以及更早的 `os error 5` 文件锁变体）。服务计划任务带每分钟重复触发器，仅用 `schtasks /End` 结束运行中的桥会让触发器在一分钟内重新拉起它，可执行文件与端口 8787/8788 保持锁定；随后覆盖与服务修复超时。安装/修复路径与安装器的进程停止路径现在在停止桥之前先禁用计划任务（`schtasks /Change /DISABLE`），被杀进程保持关闭直到新任务重建。新增真实计划任务回归测试，验证禁用后的任务不再报告 Enabled。
+- 使用系统 ANSI 代码页解码 Windows 控制台程序（`schtasks.exe`、`whoami.exe`）的输出，不再假定 UTF-8。本地化 Windows 上它们的错误文本使用本地代码页（简体中文系统为 GBK），因此 `String::from_utf8_lossy` 把所有非 ASCII 字节变成 `?`，在失败对话框中抹掉了真实原因（`Error: ????: ????????`）。服务、管理器与更新器中的错误路径现在可读地渲染本地化系统错误。核心 crate 新增共享的 `decode_console_bytes` 辅助函数，仅对 Windows 启用，Linux 设备路由器不受影响。
 
 ## 2.0.0-alpha.17 - 2026-07-22
 
-- Fixes the real root cause behind the `cannot remove ...\hanako-bridge.exe: 拒绝访问。 (os error 5); rollback also failed` install failure. A still-running `hanako-bridge.exe` holds an exclusive image lock on its own file for its whole lifetime, so the file can never be deleted while that process lives — the alpha.16 timed retry could not help because the lock is not transient. On a machine where `stop_installed_service_and_processes` fails to terminate the old Bridge (for example when it cannot resolve the process's executable path), the overwrite hit that permanent lock and aborted the whole install and its rollback.
-- Overwriting a managed file now falls back to renaming the locked original aside to a `.hanako-old` sidecar (renaming a running image is allowed on Windows even though deleting it is not), then puts the new file in place. The running process keeps mapping the displaced image and picks up the new binary on its next launch, so installs no longer depend on the old process having already exited. Leftover sidecars are swept at the start of the next install once their process has exited.
-- Adds a regression test that locks a binary with a real running process, then asserts the overwrite succeeds and the live file is displaced instead of the install failing, plus sidecar-path and sweep unit coverage.
+- 修复 `cannot remove ...\hanako-bridge.exe: 拒绝访问。 (os error 5); rollback also failed` 安装失败背后的真正根因。仍在运行的 `hanako-bridge.exe` 在其整个生命周期内对自身文件持有独占镜像锁，进程存活期间文件永远无法删除，alpha.16 的定时重试也帮不上忙，因为该锁不是瞬时的。在 `stop_installed_service_and_processes` 无法终止旧桥的机器上（例如解析不到进程可执行路径时），覆盖撞上这个永久锁，整个安装及其回滚都被中止。
+- 覆盖受管文件时，现在回退为把被锁原文件重命名到 `.hanako-old` 边车文件（Windows 允许重命名运行中的镜像，即使不允许删除），再放置新文件。运行中的进程继续映射被移走的镜像，下次启动时拾取新二进制，安装不再依赖旧进程已经退出。下次安装开始时，一旦边车进程退出即清扫残留边车。
+- 新增回归测试：用真实运行中的进程锁住二进制，断言覆盖成功且活动文件被移走而不是安装失败，另有边车路径与清扫的单元覆盖。
 
 ## 2.0.0-alpha.16 - 2026-07-22
 
-- Retries the install/update payload transaction against transient Windows file locks so installs no longer die with `拒绝访问。 (os error 5); rollback also failed` on machines where an antivirus scanner briefly opens a freshly written executable, or a just-terminated Bridge process has not released its handle yet. The remove/rename/copy steps in `apply`, `rollback`, and `replace_file` now retry for up to ten seconds on `ERROR_ACCESS_DENIED` (5) and `ERROR_SHARING_VIOLATION` (32), while non-transient errors still fail immediately.
-- Adds unit coverage for the transient-lock retry helper: it recovers after repeated access-denied errors and gives up at once on unrelated errors.
+- 针对瞬时 Windows 文件锁重试安装/更新负载事务，安装不再在杀毒软件短暂打开刚写入的可执行文件、或刚终止的桥进程尚未释放句柄的机器上以 `拒绝访问。 (os error 5); rollback also failed` 失败。`apply`、`rollback` 与 `replace_file` 中的删除/重命名/复制步骤现在在 `ERROR_ACCESS_DENIED`（5）与 `ERROR_SHARING_VIOLATION`（32）上最多重试十秒，非瞬时错误仍然立即失败。
+- 新增瞬时锁重试辅助函数的单元覆盖：连续访问拒绝后恢复，无关错误立即放弃。
 
 ## 2.0.0-alpha.15 - 2026-07-21
 
-- Steers connected agents toward the correct execution pattern via the `local_exec.execute` tool description: `execute` blocks and is only for short tasks, while long-running work (npm install, large recursive scans, downloads) should use `request_run` + `run` and poll `job_status`/`job_output`, which is not bound by the request timeout. Also documents that a child process started with a bare `Start-Process` detaches and its stdout is not captured; run it inline or with `-NoNewWindow -Wait`. Behavior is unchanged; this is guidance only.
+- 通过 `local_exec.execute` 工具描述引导连接的 Agent 使用正确的执行模式：`execute` 会阻塞，只适合短任务；长任务（npm install、大型递归扫描、下载）应使用 `request_run` + `run` 并轮询 `job_status`/`job_output`，不受请求超时约束。同时说明裸 `Start-Process` 启动的子进程会分离且 stdout 不被捕获；应内联运行或加 `-NoNewWindow -Wait`。行为不变，仅指导性改动。
 
 ## 2.0.0-alpha.14 - 2026-07-21
 
-- Keeps the cloud WebSocket connection alive during long-running RPC calls. The connection loop previously awaited each `rpc_request` inline, so a slow tool call (an npm install, a large recursive directory scan, a long script) froze the heartbeat/ping loop for the whole call and the server dropped the connection as dead. RPC handling is now dispatched to its own task, with responses delivered through an outbound channel, while the loop keeps servicing heartbeats and pings.
-- Corrects the integration and device-router tool-count assertions (33 bridge tools, 36 through the router) after the alpha.13 process-management tools were added.
+- 在长 RPC 调用期间保持云端 WebSocket 连接存活。连接循环之前内联等待每个 `rpc_request`，慢工具调用（npm install、大型递归目录扫描、长脚本）会冻结整个调用的心跳/ping 循环，服务器把连接判死断开。RPC 处理现在派发到独立任务，响应经出站通道送达，循环持续服务心跳与 ping。
+- alpha.13 新增进程管理工具后，修正集成与设备路由器的工具计数断言（桥 33 个工具，经路由器 36 个）。
 
 ## 2.0.0-alpha.13 - 2026-07-21
 
-- Adds `local_exec.list_processes` and `local_exec.terminate` so the agent can observe and manage arbitrary processes, returning a structured result (terminated / failed-with-reason / protected / matched) instead of an opaque error. Protection is PID-aware: the bridge, its running job workers, and the manager/updater are never killed; a by-name match of more than one process requires confirmation.
-- Exposes lightweight runtime metrics (uptime, per-tool call counts, cloud reconnect count) on `/health` and the manager snapshot, using process-local counters with no external telemetry.
-- Bounds the device-router offline queue even when every item is still queued, evicting the oldest item so an offline device with repeated `queueIfOffline` calls can no longer grow the queue without limit.
-- Fixes a device-router panic where a downstream device returning a non-object tool entry (or inputSchema) could crash tool refresh; malformed entries are now left untouched.
-- Adds a regression test for accepting a fully-received update download that ends without a clean TLS close, plus device-router routing and queue coverage.
+- 新增 `local_exec.list_processes` 与 `local_exec.terminate`，让 Agent 能观察与管理任意进程，返回结构化结果（已终止 / 失败原因 / 受保护 / 匹配数）而不是不透明错误。保护是 PID 感知的：桥、其运行中的 job worker、管理器/更新器永不被杀；按名称匹配到多个进程时要求确认。
+- 在 `/health` 与管理器快照上暴露轻量运行时指标（运行时长、各工具调用次数、云端重连次数），使用进程本地计数器，无外部遥测。
+- 即使所有条目仍在排队，也为设备路由器离线队列设置上限，驱逐最旧条目，反复 `queueIfOffline` 的离线设备不再能无限增长队列。
+- 修复设备路由器 panic：下游设备返回非对象工具条目（或 inputSchema）时可能崩溃工具刷新；畸形条目现在保持原样不处理。
+- 新增回归测试：接受一个完整接收但未以干净 TLS 关闭结束的更新下载，另有设备路由器路由与队列覆盖。
 
 ## 2.0.0-alpha.12 - 2026-07-20
 
-- Makes remote update package downloads retryable and resumable after interrupted response bodies.
-- Sends HTTP Range requests from the retained partial-file offset and safely restarts when a server ignores the range.
-- Accepts a body-close error only when the downloaded file already reached the signed manifest size, then still requires the existing SHA256 verification.
-- Reduces each remote request timeout to three minutes, adds TCP keepalive, and forces HTTP/1.1 for more predictable Windows update downloads.
-- Adds deterministic interrupted-body coverage and an explicit ignored probe for validating a real signed release URL, size, and SHA256.
+- 远程更新包下载在响应体中断后可重试与续传。
+- 从保留的部分文件偏移处发送 HTTP Range 请求，服务器忽略 Range 时安全重头开始。
+- 仅当下载文件已达到签名清单大小时才接受 body-close 错误，随后仍要求既有 SHA256 校验。
+- 每个远程请求超时降至三分钟，增加 TCP keepalive，强制 HTTP/1.1 以获得更可预测的 Windows 更新下载。
+- 新增确定性中断响应体覆盖，以及用于验证真实签名发布 URL、大小与 SHA256 的显式忽略探针。
 
 ## 2.0.0-alpha.11 - 2026-07-20
 
-- Repairs desktop and Start menu shortcuts during signed online updates so existing installations migrate from the internal `hanako-manager.exe` target to the unified `hanako-bridge.exe` product entry.
-- Refreshes the uninstall `DisplayIcon` and `DisplayVersion` during online updates, matching fresh and overwrite installs.
-- Moves Windows Shell integration into the shared Rust maintenance library so the installer and updater use one implementation.
-- Treats Shell integration repair failure as an update failure and rolls the managed payload back instead of reporting a partial success.
-- Extends the Alpha 10-to-Alpha 11 signed update smoke test with isolated shortcut and uninstall-registry migration checks.
+- 签名在线更新期间修复桌面与开始菜单快捷方式，既有安装从内部 `hanako-manager.exe` 目标迁移到统一产品入口 `hanako-bridge.exe`。
+- 在线更新时刷新卸载入口的 `DisplayIcon` 与 `DisplayVersion`，与全新安装和覆盖安装一致。
+- 将 Windows Shell 集成移入共享的 Rust 维护库，安装器与更新器使用同一实现。
+- Shell 集成修复失败视为更新失败，回滚受管负载而不是报告部分成功。
+- 扩展 Alpha 10 到 Alpha 11 的签名更新冒烟测试，加入隔离的快捷方式与卸载注册表迁移检查。
 
 ## 2.0.0-alpha.10 - 2026-07-20
 
-- Makes `hanako-bridge.exe` the single user-facing Windows product entry.
-- Opens the Rust tray manager when the product entry is launched without arguments, while `--service` remains the explicit background-service role.
-- Adds top-level `--status`, `--repair`, and `--doctor` commands without routing product maintenance through legacy scripts.
-- Points desktop, Start menu, uninstall display-icon, post-install launch, and post-update relaunch behavior at the unified product entry.
-- Keeps `hanako-manager.exe` as an internal single-instance UI role and `hanako-maintenance.exe` as the hidden self-update role.
-- Extends integration and installer coverage for explicit service startup, shortcut targets, repeated product launches, background survival, and Alpha 9-to-Alpha 10 signed updates.
+- 让 `hanako-bridge.exe` 成为面向用户的唯一 Windows 产品入口。
+- 产品入口无参数启动时打开 Rust 托盘管理器，`--service` 保持显式后台服务角色。
+- 新增顶层 `--status`、`--repair`、`--doctor` 命令，产品维护不再经过旧脚本。
+- 桌面、开始菜单、卸载显示图标、安装后启动与更新后重启行为全部指向统一产品入口。
+- `hanako-manager.exe` 保留为内部单实例 UI 角色，`hanako-maintenance.exe` 为隐藏自更新角色。
+- 扩展集成与安装器覆盖：显式服务启动、快捷方式目标、重复产品启动、后台存活、Alpha 9 到 Alpha 10 签名更新。
 
 ## 2.0.0-alpha.9 - 2026-07-19
 
-- Adds a one-minute repeating Task Scheduler trigger to the existing logon trigger.
-- Keeps `MultipleInstancesPolicy=IgnoreNew`, so the periodic trigger does not create duplicate Bridge processes while the service is healthy.
-- Recovers the background Bridge after an external force termination that Task Scheduler reports as `0xFFFFFFFF` and does not handle through `RestartOnFailure`.
-- Extends the installed-service smoke test to terminate the Bridge, wait for a different process ID, verify both health endpoints, and assert that the recovered process has no visible window.
-- Advances signed update coverage from Alpha 8 to Alpha 9.
+- 在既有登录触发器之外新增每分钟重复的任务计划触发器。
+- 保持 `MultipleInstancesPolicy=IgnoreNew`，服务健康时周期触发器不会创建重复桥进程。
+- 外部强制终止后恢复后台桥，任务计划程序把该终止报告为 `0xFFFFFFFF` 且不通过 `RestartOnFailure` 处理。
+- 扩展已安装服务冒烟测试：终止桥、等待不同进程 ID、验证两个健康端点、断言恢复进程无可见窗口。
+- 签名更新覆盖从 Alpha 8 推进到 Alpha 9。
 
 ## 2.0.0-alpha.8 - 2026-07-19
 
-- Builds the release `hanako-bridge.exe` as a Windows GUI subsystem executable so Task Scheduler can run it without allocating a visible console window.
-- Keeps debug builds as console applications for local diagnostics.
-- Preserves redirected JSON output for manager service commands after the subsystem change.
-- Adds a PE subsystem regression assertion to the installed-service smoke test.
-- Verifies closing the tray manager does not stop the independent background MCP bridge.
-- Advances signed update coverage from Alpha 7 to Alpha 8.
+- 发布版 `hanako-bridge.exe` 构建为 Windows GUI 子系统可执行文件，任务计划程序运行它时不会分配可见控制台窗口。
+- 调试构建保持控制台应用，便于本地诊断。
+- 子系统变更后保留管理器服务命令的重定向 JSON 输出。
+- 已安装服务冒烟测试新增 PE 子系统回归断言。
+- 验证关闭托盘管理器不会停止独立的后台 MCP 桥。
+- 签名更新覆盖从 Alpha 7 推进到 Alpha 8。
 
 ## 2.0.0-alpha.7 - 2026-07-19
 
-- Added a separate signed Alpha update feed under `/local-bridge/releases/alpha/` while leaving the stable `1.4.9` feed unchanged.
-- Automatically selects the Alpha feed for prerelease Rust builds that still carry the official stable manifest URL.
-- Preserves custom update manifest URLs and supports explicitly selecting the Alpha channel.
-- Shows the effective manifest in manager status and settings so the displayed source matches the source actually used.
-- Retries manager update checks once after a transient local connection failure and translates raw `Failed to fetch` errors into a Chinese recovery message.
-- Added regression coverage for stable, prerelease, explicit channel, custom manifest, and manager update error behavior.
+- 在 `/local-bridge/releases/alpha/` 下新增独立签名 Alpha 更新源，稳定版 `1.4.9` 源保持不变。
+- 仍携带官方稳定清单 URL 的预发布 Rust 构建自动选择 Alpha 源。
+- 保留自定义更新清单 URL，支持显式选择 Alpha 频道。
+- 管理器状态与设置中显示实际生效的清单，展示来源与实际使用来源一致。
+- 管理器更新检查在瞬时本地连接失败后重试一次，并把原始 `Failed to fetch` 错误翻译为中文恢复提示。
+- 新增稳定、预发布、显式频道、自定义清单与管理器更新错误行为的回归覆盖。
 
 ## 2.0.0-alpha.6 - 2026-07-19
 
-- Replaced the fixed 2.5-second manager refresh after repair or restart with a 30-second recovery loop that tolerates the expected local disconnect.
-- Clears transient connection errors after the local service returns and keeps service-action buttons disabled until recovery is complete.
-- Reports `connecting` and `authenticating` cloud states as warnings instead of final errors; an intentionally disabled cloud connection is healthy.
-- Adds a warning-level overall manager state and displays cloud state plus the last connection error in diagnostic details.
-- Handles settings-triggered restarts with the same recovery flow when the manager port is unchanged.
-- Added regression coverage for cloud transition classification and the manager recovery state machine.
+- 把修复或重启后固定 2.5 秒的管理器刷新替换为 30 秒恢复循环，容忍预期的本地断连。
+- 本地服务恢复后清除瞬时连接错误，恢复完成前保持服务操作按钮禁用。
+- 云端 `connecting` 与 `authenticating` 状态按警告而非最终错误报告；有意禁用的云端连接视为健康。
+- 新增警告级整体管理器状态，诊断详情中显示云端状态与最后连接错误。
+- 管理器端口不变时，设置触发的重启走同一恢复流程。
+- 新增云端状态转移分类与管理器恢复状态机的回归覆盖。
 
 ## 2.0.0-alpha.5 - 2026-07-19
 
-- Localized cloud connection, trust mode, diagnostic item, diagnostic status, root permission, root source, and update status values in the Rust manager.
-- Added clearer Chinese progress, success, connection, and Windows access-denied messages to the diagnostics interface.
-- Fixed manager repair, restart, stop, and settings-triggered restart failing with `Access is denied (os error 5)` inside the scheduled-task Windows Job.
-- Replaced `CREATE_BREAKAWAY_FROM_JOB` workers with an independent hidden on-demand scheduled task that cleans itself up after the service action.
-- Added a real installed-service regression step that fails on Alpha 4 and verifies the manager repair API on Alpha 5.
-- Added Alpha 4-to-Alpha 5 signed update coverage and rebuilt the Alpha 5 ZIP, manifest, and embedded installer.
+- Rust 管理器中本地化云端连接、信任模式、诊断项、诊断状态、根目录权限、根目录来源与更新状态值。
+- 诊断界面新增更清晰的中文进度、成功、连接与 Windows 访问拒绝消息。
+- 修复计划任务 Windows Job 内管理器修复、重启、停止与设置触发重启报 `Access is denied (os error 5)` 的问题。
+- 用独立隐藏的按需计划任务替换 `CREATE_BREAKAWAY_FROM_JOB` worker，服务操作完成后自行清理。
+- 新增真实已安装服务回归步骤：在 Alpha 4 上失败，在 Alpha 5 上验证管理器修复 API。
+- 新增 Alpha 4 到 Alpha 5 签名更新覆盖，重建 Alpha 5 ZIP、清单与内嵌安装器。
 
 ## 2.0.0-alpha.4 - 2026-07-19
 
-- Fixed migration from stable Node installations whose scheduled task launches `wscript`, a PowerShell watchdog, and a detached `node.exe` process.
-- Detect legacy installations even when they do not contain a Rust `payload-manifest.json`.
-- Stop legacy MCP and tunnel tasks, then terminate only processes whose executable or command line belongs to the target Hanako installation directory.
-- Preserve the real bridge service repair exit code, stdout, stderr, and rollback error instead of reducing every failure to `installed bridge service failed to start`.
-- Replaced the direct-Node installer fixture with a detached VBS/Node fixture that fails on Alpha 3 and passes on Alpha 4.
-- Added signed Alpha 3-to-Alpha 4 update coverage and rebuilt the Alpha 4 ZIP, manifest, and embedded installer.
+- 修复从稳定版 Node 安装迁移的问题，旧安装的计划任务启动 `wscript`、PowerShell watchdog 与分离的 `node.exe` 进程。
+- 即使旧安装不包含 Rust `payload-manifest.json` 也能检测出旧安装。
+- 停止旧版 MCP 与隧道任务，只终止可执行文件或命令行属于目标 Hanako 安装目录的进程。
+- 保留真实桥服务修复的退出码、stdout、stderr 与回滚错误，不再把所有失败归约为 `installed bridge service failed to start`。
+- 用分离的 VBS/Node fixture 替换直接 Node 安装器 fixture：在 Alpha 3 上失败，在 Alpha 4 上通过。
+- 新增签名 Alpha 3 到 Alpha 4 更新覆盖，重建 Alpha 4 ZIP、清单与内嵌安装器。
 
 ## 2.0.0-alpha.3 - 2026-07-19
 
-- Fixed the Rust manager accepting any listener on the configured approval port, which could open the legacy Node manager endpoint and display `{"error":"invalid approval token"}`.
-- Added explicit Rust runtime and exact-version identity checks before the manager opens its WebView.
-- Added per-installation manager single-instance activation so repeated shortcut clicks restore the existing window instead of opening duplicate windows.
-- Changed scheduled-task repair to stop the previous task and wait for both local ports to be released before starting the Rust replacement.
-- Added bounded uninstall retries so short-lived WebView2 file handles do not leave a partially removed installation.
-- Added regression coverage for legacy-service takeover, overwrite data preservation, installed-manager multiple launch, uninstall after WebView2 startup, and signed Alpha 2-to-Alpha 3 update.
-- Rebuilt the signed Alpha 3 ZIP, manifest, and embedded Windows installer. The cloud Linux device router remains on compatible Rust Alpha 2.
+- 修复 Rust 管理器接受配置审批端口上任意监听者的问题，这可能打开旧版 Node 管理器端点并显示 `{"error":"invalid approval token"}`。
+- 管理器打开 WebView 前新增显式 Rust 运行时与精确版本身份检查。
+- 新增按安装的管理器单实例激活，重复点击快捷方式恢复既有窗口而不是打开重复窗口。
+- 计划任务修复改为停止上一个任务并等待两个本地端口释放后再启动 Rust 替代。
+- 新增有界卸载重试，短命 WebView2 文件句柄不再留下部分卸载的安装。
+- 新增旧服务接管、覆盖数据保留、已安装管理器多次启动、WebView2 启动后卸载、签名 Alpha 2 到 Alpha 3 更新的回归覆盖。
+- 重建签名 Alpha 3 ZIP、清单与内嵌 Windows 安装器。云端 Linux 设备路由器保持在兼容的 Rust Alpha 2。
 
 ## 2.0.0-alpha.2 - 2026-07-19
 
-- Ported the signed updater, embedded Windows installer, and Linux multi-device router to Rust.
-- Added detached updater handoff with launcher-PID waiting so Windows can replace a running maintenance binary without an intermittent `os error 5`.
-- Added transactional payload replacement, stale managed-file cleanup, rollback, signed manifest compatibility, persistent update state, and preservation of configuration, data, logs, and unknown user files.
-- Added per-user shortcuts, uninstall registration, detached uninstall, UTF-16 Task Scheduler XML, and isolated install/overwrite/uninstall smoke coverage.
-- Added complete MCP audit events without sensitive arguments and active execution-job recovery across bridge restarts.
-- Added Rust cloud protocol, device-router, audit, recovery, installer, and Alpha 1-to-Alpha 2 update integration tests.
-- Rebuilt the signed `2.0.0-alpha.2` ZIP and embedded installer after the updater fix.
-- Deployed the Rust device router to the cloud host and verified 34 tools, two online Windows devices, real MCP calls, offline-queue compatibility, and the public Hana web entry.
-- Kept the installed Windows stable channel on `1.4.9`; Alpha 2 remains a separate prerelease until clean Windows 10/11 rollout validation is complete.
+- 将签名更新器、内嵌 Windows 安装器与 Linux 多设备路由器移植到 Rust。
+- 新增分离更新器交接与 launcher-PID 等待，Windows 可在不出现间歇性 `os error 5` 的情况下替换运行中的维护二进制。
+- 新增事务化负载替换、过期受管文件清理、回滚、签名清单兼容、持久更新状态，以及配置、数据、日志与未知用户文件的保留。
+- 新增按用户快捷方式、卸载注册、分离卸载、UTF-16 任务计划 XML，以及隔离的安装/覆盖/卸载冒烟覆盖。
+- 新增完整 MCP 审计事件（不含敏感参数）与跨桥重启的活跃执行任务恢复。
+- 新增 Rust 云端协议、设备路由器、审计、恢复、安装器与 Alpha 1 到 Alpha 2 更新集成测试。
+- 更新器修复后重建签名 `2.0.0-alpha.2` ZIP 与内嵌安装器。
+- 云端主机部署 Rust 设备路由器，验证 34 个工具、两台在线 Windows 设备、真实 MCP 调用、离线队列兼容与公开 Hana 网页入口。
+- 已安装 Windows 稳定频道保持在 `1.4.9`；在干净的 Windows 10/11 滚动验证完成前，Alpha 2 保持独立预发布。
 
 ## 2.0.0-alpha.1 - 2026-07-19
 
-- Added a Rust workspace with shared configuration, device identity, path resolution, and crash-safe JSON storage.
-- Ported the Windows MCP bridge, all 31 filesystem and execution tools, approval modes, job runner, cloud WebSocket connector, and scheduled-task service controls to Rust.
-- Added a lightweight Rust WebView2 manager with overview, diagnostics, roots, logs, settings, tray restore, and tray exit behavior.
-- Added debug and release EXE integration coverage, including token authentication, atomic writes, SHA256 concurrency checks, UTF-16, images, search, watches, PowerShell jobs, private-network CORS, manager HTML, and favicon behavior.
-- Kept the production `1.4.9` installer and updater unchanged until the Rust updater, installer payload, and Linux device router are complete.
+- 新增 Rust 工作区：共享配置、设备身份、路径解析与崩溃安全 JSON 存储。
+- 移植 Windows MCP 桥、全部 31 个文件与执行工具、审批模式、job runner、云端 WebSocket 连接器与计划任务服务控制。
+- 新增轻量 Rust WebView2 管理器：概览、诊断、根目录、日志、设置、托盘恢复与托盘退出。
+- 新增 debug 与 release EXE 集成覆盖：Token 认证、原子写入、SHA256 并发校验、UTF-16、图片、搜索、watch、PowerShell 任务、专用网络 CORS、管理器 HTML 与 favicon 行为。
+- Rust 更新器、安装器负载与 Linux 设备路由器完成前，生产 `1.4.9` 安装器与更新器保持不变。
 
 ## 1.4.9 - 2026-07-18
 
-- Added a verified handoff between the manager and the detached online updater before the manager exits.
-- Persist update success or failure, verify the installed version, and show the result when the manager reopens.
-- Keep the manager open with an actionable error when the updater cannot start instead of silently appearing to do nothing.
+- 管理器退出前新增与分离在线更新器之间的已验证交接。
+- 持久化更新成功或失败，验证已安装版本，管理器重新打开时展示结果。
+- 更新器无法启动时保持管理器打开并给出可操作错误，而不是静默看似无事发生。
 
 ## 1.4.8 - 2026-07-18
 
-- Added a signed-release payload inventory and remove obsolete managed files during online updates and overwrite installations.
-- Preserved configuration, device data, logs, migration backups, and user-created root files while cleaning old manager/runtime dependencies.
+- 新增签名发布负载清单，在线更新与覆盖安装期间移除过期的受管文件。
+- 清理旧管理器/运行时依赖时保留配置、设备数据、日志、迁移备份与用户创建的根文件。
 
 ## 1.4.7 - 2026-07-18
 
-- Added a desktop manager shortcut during installation and repair missing desktop, Start menu, and uninstall entries during default-path online updates.
-- Paused background polling on the Cloud devices page and disabled claim/query actions while another manager operation is active.
-- Removed unused Windows App SDK AI, ML, and Widgets packages from the native manager payload.
+- 安装时新增桌面管理器快捷方式，默认路径在线更新时修复缺失的桌面、开始菜单与卸载条目。
+- 云端设备页在另一管理器操作进行中时暂停后台轮询，禁用认领/查询动作。
+- 从原生管理器负载移除未使用的 Windows App SDK AI、ML 与 Widgets 包。
 
 ## 1.4.6 - 2026-07-18
 
-- Paused background health polling while the Settings page is open and wait for in-flight refreshes before checking for updates.
-- Prevented the Settings update section from getting stuck at "not checked" when navigation races with a status refresh.
+- 设置页打开时暂停后台健康轮询，检查更新前等待进行中的刷新完成。
+- 修复导航与状态刷新竞争时设置更新区卡在"未检查"的问题。
 
 ## 1.4.5 - 2026-07-18
 
-- Replaced large update-package downloads with bounded, retried `curl.exe` transfers to prevent Windows PowerShell `Invoke-WebRequest` from hanging at zero bytes.
-- Added a target-install-root option for recovery updates and a download regression test.
+- 大型更新包下载改为有界、重试的 `curl.exe` 传输，避免 Windows PowerShell `Invoke-WebRequest` 在零字节处挂起。
+- 新增目标安装根目录选项用于恢复更新，以及下载回归测试。
 
 ## 1.4.4 - 2026-07-18
 
-- Fixed WinUI system tray notification decoding so double-click and right-click work with `NOTIFYICON_VERSION_4`.
-- Added tray menu actions to reopen the manager or exit the manager process.
-- Added signed online update checking and one-click installation in the manager settings.
+- 修复 WinUI 系统托盘通知解码，双击与右键在 `NOTIFYICON_VERSION_4` 下正常工作。
+- 新增托盘菜单动作：重新打开管理器或退出管理器进程。
+- 管理器设置中新增签名在线更新检查与一键安装。
 
 ## 1.4.3 - 2026-07-18
 
-- Added a native Windows system-tray icon to the WinUI manager.
-- Minimizing the manager now hides its window from the taskbar while keeping the bridge services running.
-- Added tray actions to reopen or exit the manager.
+- WinUI 管理器新增原生 Windows 系统托盘图标。
+- 最小化管理器现在从任务栏隐藏窗口，同时保持桥服务运行。
+- 新增托盘动作：重新打开或退出管理器。
 
 ## 1.4.2 - 2026-07-18
 
-- Fixed WinUI cloud device query and claim failing in fresh Windows PowerShell `-File` processes because `WebRequestSession` was referenced before its utility assembly was loaded.
-- Let `Invoke-RestMethod -SessionVariable` create the login session and added a regression test that verifies the same session is reused for the device query.
+- 修复 WinUI 云端设备查询与认领在全新 Windows PowerShell `-File` 进程中失败的问题，原因是 `WebRequestSession` 在其工具程序集加载前被引用。
+- 让 `Invoke-RestMethod -SessionVariable` 创建登录会话，新增回归测试验证设备查询复用同一会话。
 
 ## 1.4.1 - 2026-07-18
 
-- Moved the public signed update manifest and ZIP package endpoint to the production HTTPS server so automatic updates work while the GitHub source repository remains private.
-- Added the Nginx static-release location and deployment/verification procedure for `/local-bridge/releases/`.
+- 公开签名更新清单与 ZIP 包端点迁移到生产 HTTPS 服务器，GitHub 源码仓库保持私有时自动更新仍可用。
+- 新增 `/local-bridge/releases/` 的 Nginx 静态发布 location 与部署/验证流程。
 
 ## 1.4.0 - 2026-07-18
 
-- Added Bearer-token authentication to the loopback MCP endpoint, rejected browser Origin requests, validated loopback Host headers, and limited MCP and approval request bodies to 1 MiB.
-- Added private MCP-token forwarding for the legacy SSH device router without exposing tokens in device-list responses.
-- Migrated the official cloud endpoint from plaintext WebSocket to trusted `wss://your-server.example.com`.
-- Preserved secondary configured filesystem roots when saving settings.
-- Made the WinUI manager fit the current Windows work area and enabled overview scrolling on compact displays.
-- Added RSA-SHA256 signatures for remote update manifests, enforced HTTPS, SHA256, and package-size verification, and embedded only the public signing key.
-- Added an initial GitHub-managed stable manifest; superseded by the public HTTPS release endpoint in 1.4.1 because private GitHub repositories return 404 to unauthenticated clients.
-- Added configuration, update-signature, MCP authentication, Origin, body-limit, and routed-token regression coverage.
+- 回环 MCP 端点新增 Bearer-Token 认证，拒绝浏览器 Origin 请求，校验回环 Host 头，MCP 与审批请求体限制为 1 MiB。
+- 旧版 SSH 设备路由器新增私有 MCP Token 转发，设备列表响应不暴露 Token。
+- 官方云端端点从明文 WebSocket 迁移到受信 `wss://your-server.example.com`。
+- 保存设置时保留次要配置的文件系统根目录。
+- WinUI 管理器适配当前 Windows 工作区，紧凑显示器上概览可滚动。
+- 远程更新清单新增 RSA-SHA256 签名，强制 HTTPS、SHA256 与包大小校验，只内嵌公钥。
+- 新增 GitHub 托管初始稳定清单；1.4.1 被公开 HTTPS 发布端点取代，因为私有 GitHub 仓库对未认证客户端返回 404。
+- 新增配置、更新签名、MCP 认证、Origin、请求体限制与路由 Token 的回归覆盖。
 
 ## 1.3.1 - 2026-07-18
 
-- Fixed WinUI repair/start/stop/restart actions failing JSON parsing when PowerShell emitted status text before the result.
-- Enforced a JSON-only stdout contract in `manager-command.ps1` and added a regression test with a simulated `Stopped ...` preamble.
-- Added WinUI fallback parsing for the final complete JSON value when unexpected command output is present.
-- Prevented normal repair operations from stopping `HanakoBridgeManager.exe`; installers and updates still close it explicitly when replacing files.
-- Restricted process cleanup to known Hanako watchdog, Node service, and legacy tunnel entry points instead of every process mentioning the install directory.
-- Removed the private cloud maintenance manual from release payloads and delete legacy installed copies during install or update.
+- 修复 WinUI 修复/启动/停止/重启动作在 PowerShell 先输出状态文字时 JSON 解析失败的问题。
+- `manager-command.ps1` 强制 JSON-only stdout 契约，新增模拟 `Stopped ...` 前缀的回归测试。
+- 出现意外命令输出时，WinUI 回退解析最后一个完整 JSON 值。
+- 正常修复操作不再停止 `HanakoBridgeManager.exe`；安装器与更新器替换文件时仍显式关闭它。
+- 进程清理收窄为已知 Hanako watchdog、Node 服务与旧隧道入口，不再匹配所有提及安装目录的进程。
+- 从发布负载移除私有云维护手册，安装或更新时删除旧安装副本。
 
 ## 1.3.0 - 2026-07-17
 
-- Replaced the primary Windows Forms manager with a modern WinUI 3 desktop application.
-- Kept `manager-core.ps1` as the authoritative backend and added a JSON-only `manager-command.ps1` boundary for the native UI.
-- Added overview, diagnostics, cloud-device, log, theme, repair, and service controls with stable UI Automation identifiers.
-- Added mixed UTF-8 and BOM-less UTF-16LE log decoding without NUL characters or mojibake.
-- Added a self-contained .NET 10 and Windows App SDK 2.3.1 manager build with XAML/PRI publish validation.
-- Updated the launcher to validate and open the WinUI manager, with automatic Windows Forms fallback.
-- Added installer and updater handling for a running native manager, plus installed-manager startup and smoke coverage.
+- 主 Windows Forms 管理器替换为现代 WinUI 3 桌面应用。
+- `manager-core.ps1` 保持为权威后端，新增 JSON-only `manager-command.ps1` 作为原生 UI 边界。
+- 新增概览、诊断、云端设备、日志、主题、修复与服务控制，带稳定 UI Automation 标识。
+- 新增混合 UTF-8 与无 BOM UTF-16LE 日志解码，无 NUL 字符或乱码。
+- 新增自包含 .NET 10 与 Windows App SDK 2.3.1 管理器构建，含 XAML/PRI 发布校验。
+- 启动器更新为校验并打开 WinUI 管理器，自动回退 Windows Forms。
+- 安装器与更新器新增运行中原生管理器的处理，以及已安装管理器启动与冒烟覆盖。
 
 ## 1.2.1 - 2026-07-17
 
-- Added a Windows Forms manager for local service status, diagnostics, repair, cloud device listing, device claim, and log viewing.
-- Added hidden manager startup through `wscript.exe` and a Start menu shortcut.
-- Added explicit `active`, `pending_claim`, `offline`, missing-task, missing-process, and missing-credential diagnostics.
-- Added start, stop, restart, and detect-and-repair actions without opening a PowerShell window.
-- Added temporary Hana web login for device queries and claim; the access key is never persisted.
-- Added manager-core tests that verify offline diagnostics and prevent credentials or private key material from entering reports.
-- Added manager files and checks to the Windows installer and isolated installer smoke test.
+- 新增 Windows Forms 管理器：本地服务状态、诊断、修复、云端设备列表、设备认领与日志查看。
+- 通过 `wscript.exe` 隐藏启动管理器，新增开始菜单快捷方式。
+- 新增显式 `active`、`pending_claim`、`offline`、任务缺失、进程缺失与凭据缺失诊断。
+- 新增开始、停止、重启与检测并修复动作，不打开 PowerShell 窗口。
+- 设备查询与认领使用临时 Hana 网页登录，访问密钥永不持久化。
+- 新增 manager-core 测试：验证离线诊断，防止凭据或私钥材料进入报告。
+- Windows 安装器新增管理器文件与检查，以及隔离安装器冒烟测试。
 
 ## 1.2.0 - 2026-07-17
 
-- Replaced per-device SSH reverse tunnels with an active cloud WebSocket connection.
-- Added persistent Ed25519 device identity, signed device proof, one-time browser claim tokens, and cloud-issued device credentials.
-- Added automatic browser claim after authenticated Hana web login.
-- Added WebSocket heartbeat, exponential reconnect, credential persistence, and automatic legacy-config migration.
-- Added cloud connector status to local health and client identity endpoints.
-- Updated the device router to register explicit loopback forwarding URLs for WebSocket-connected devices.
-- Kept the SSH tunnel path as an opt-in compatibility fallback.
-- Added cloud connector tests and full regression coverage.
+- 每设备 SSH 反向隧道替换为主动云端 WebSocket 连接。
+- 新增持久 Ed25519 设备身份、签名设备证明、一次性浏览器认领 Token 与云端签发设备凭证。
+- 认证的 Hana 网页登录后自动浏览器认领。
+- 新增 WebSocket 心跳、指数退避重连、凭据持久化与自动旧配置迁移。
+- 本地健康与客户端身份端点新增云端连接器状态。
+- 设备路由器更新为注册 WebSocket 连接设备的显式回环转发 URL。
+- SSH 隧道路径保留为可选兼容回退。
+- 新增云端连接器测试与完整回归覆盖。
 
 ## 1.1.0 - 2026-07-17
 
-- Added browser-to-local-bridge device detection for per-computer file routing.
-- Added an origin-restricted loopback identity endpoint with Private Network Access preflight support.
-- Added automatic cloud device registration and conflict-free reverse tunnel port allocation.
-- Disabled default-device fallback when more than one Windows bridge is configured.
-- Added integration coverage for browser identity discovery, registration, and mandatory multi-device selection.
+- 新增浏览器到本地桥的设备检测，用于按电脑路由文件。
+- 新增带专用网络访问预检支持的 Origin 受限回环身份端点。
+- 新增自动云端设备注册与无冲突反向隧道端口分配。
+- 配置多台 Windows 桥时禁用默认设备回退。
+- 新增浏览器身份发现、注册与强制多设备选择的集成覆盖。
 
 ## 1.0.3 - 2026-07-17
 
-- Added `local_fs.read_image` with native MCP image content for PNG, JPEG, GIF, and WebP files.
-- Added file-signature validation, an 8 MB default image limit, metadata, SHA256, and read audit events.
-- Added local, routed-device, and installer coverage for visual image reads.
+- 新增 `local_fs.read_image`，原生 MCP 图片内容支持 PNG、JPEG、GIF 与 WebP。
+- 新增文件签名校验、默认 8 MB 图片限制、元数据、SHA256 与读取审计事件。
+- 新增本地、路由设备与安装器覆盖的视觉图片读取。
 
 ## 1.0.2 - 2026-07-17
 
-- Added a Windows-enforced timeout for one-shot SSH health and cleanup commands.
-- Prevented a stuck SSH process from blocking the reverse-tunnel watchdog indefinitely.
-- Made remote status checks terminate cleanly when SSH becomes unresponsive.
-- Protected the updater's calling terminal and parent process chain during old-process cleanup.
+- 一次性 SSH 健康与清理命令新增 Windows 强制超时。
+- 卡住的 SSH 进程不再无限阻塞反向隧道 watchdog。
+- SSH 无响应时远程状态检查干净终止。
+- 旧进程清理期间保护更新器的调用终端与父进程链。
 
 ## 1.0.1 - 2026-07-16
 
-- Replaced hidden `Read-Host` installer prompts with a visible Windows Forms configuration window.
-- Added clear success, cancellation, validation, and installation error dialogs.
-- Separated normal double-click GUI installation from `/Q` non-interactive installation.
-- Prevented repeated double-clicks from silently waiting for input while background tasks remain stopped.
-- Added an installed configuration UI for later settings changes and repair.
+- 隐藏的 `Read-Host` 安装器提示替换为可见 Windows Forms 配置窗口。
+- 新增清晰的成功、取消、校验与安装错误对话框。
+- 普通双击 GUI 安装与 `/Q` 非交互安装分离。
+- 重复双击不再在后台任务保持停止时静默等待输入。
+- 新增已安装配置 UI，用于后续设置修改与修复。
 
 ## 1.0.0 - 2026-07-16
 
-- Added a per-user Windows installer targeting `%LOCALAPPDATA%\HanakoLocalBridge`.
-- Bundled the Node.js runtime so target computers do not need a separate Node installation.
-- Added a shared `config.json` for device identity, roots, ports, tunnel, task names, and update settings.
-- Added hidden single-instance MCP and SSH watchdogs with automatic crash recovery and reconnect.
-- Generalized status, stop, repair, and uninstall scripts to use the real install root and configuration.
-- Added migration that preserves config, device identity, authorization state, job state, and logs.
-- Added local or URL update manifests with SHA256 verification and persistent-state preservation.
-- Added an IExpress self-extracting EXE build and isolated end-to-end installer smoke tests.
+- 新增按用户 Windows 安装器，目标 `%LOCALAPPDATA%\HanakoLocalBridge`。
+- 捆绑 Node.js 运行时，目标电脑无需单独安装 Node。
+- 新增共享 `config.json`：设备身份、根目录、端口、隧道、任务名与更新设置。
+- 新增隐藏单实例 MCP 与 SSH watchdog，崩溃自动恢复并重连。
+- 状态、停止、修复与卸载脚本泛化为使用真实安装根目录与配置。
+- 新增迁移：保留配置、设备身份、授权状态、任务状态与日志。
+- 新增本地或 URL 更新清单，SHA256 校验与持久状态保留。
+- 新增 IExpress 自解压 EXE 构建与隔离端到端安装器冒烟测试。
 
 ## 0.7.1 - 2026-07-16
 
-- Added an opt-in persistent offline queue through `queueIfOffline`.
-- Added `local_device.queue` for queued/completed/failed call status.
-- Added `local_device.cancel_queued` for cancelling work before reconnect.
-- Added automatic queue replay after a device health check reports online.
-- Added end-to-end tests that stop a device, queue a write, reconnect, and verify automatic execution.
+- 通过 `queueIfOffline` 新增可选持久离线队列。
+- 新增 `local_device.queue` 查看排队/完成/失败调用状态。
+- 新增 `local_device.cancel_queued` 在重连前取消工作。
+- 设备健康检查报告在线后自动重放队列。
+- 新增端到端测试：停止设备、排队写入、重连、验证自动执行。
 
 ## 0.7.0 - 2026-07-16
 
-- Added persistent Windows device identity in `data/device.json`.
-- Added `device://<deviceId>/C:/...` support for file and script execution paths.
-- Added device metadata to health, roots, authorizations, jobs, and runtime discovery.
-- Made local and remote SSH tunnel ports configurable per computer.
-- Added a cloud MCP device router with online health, device selection, cached tools, and offline errors.
-- Added `local_device.devices` for cloud-side device discovery and status.
-- Added end-to-end device router tests for routed paths, explicit device selection, and missing devices.
+- 新增持久 Windows 设备身份 `data/device.json`。
+- 新增 `device://<deviceId>/C:/...` 文件与脚本执行路径支持。
+- 健康、根目录、授权、任务与运行时发现新增设备元数据。
+- 本地与远程 SSH 隧道端口改为按电脑可配置。
+- 新增云端 MCP 设备路由器：在线健康、设备选择、工具缓存与离线错误。
+- 新增 `local_device.devices` 云端设备发现与状态。
+- 新增设备路由器端到端测试：路由路径、显式设备选择与缺失设备。
 
 ## 0.6.1 - 2026-07-16
 
-- Added cursor pagination to `local_fs.list`.
-- Added glob matching, exclude rules, timeout budgets, visit budgets, and loop detection to `local_fs.search`.
-- Added `local_fs.watch`, `local_fs.watch_events`, and `local_fs.unwatch`.
-- Added an in-memory event ring, sequence cursors, debounce, overflow reporting, and long polling for watches.
-- Added integration coverage for pagination, invalid cursors, bounded search, exclusions, and real Windows file events.
+- `local_fs.list` 新增游标分页。
+- `local_fs.search` 新增 glob 匹配、排除规则、超时预算、访问预算与循环检测。
+- 新增 `local_fs.watch`、`local_fs.watch_events` 与 `local_fs.unwatch`。
+- watch 新增内存事件环、序列游标、防抖、溢出报告与长轮询。
+- 新增集成覆盖：分页、无效游标、受限搜索、排除与真实 Windows 文件事件。
 
 ## 0.6.0 - 2026-07-16
 
-- Added `local_fs.read_lines` with line numbers, SHA256, encoding, BOM, and newline metadata.
-- Added reliable serialized `local_fs.append_text` for concurrent appends.
-- Added SHA256-protected `local_fs.apply_patch` with exact replacement counts.
-- Added UTF-8 BOM, UTF-16LE BOM, and UTF-16BE BOM detection and preservation.
-- Updated `write_text` to preserve an existing file's encoding by default.
-- Expanded integration coverage for UTF-16, line ranges, patch mismatch handling, and concurrent appends.
+- 新增 `local_fs.read_lines`：行号、SHA256、编码、BOM 与换行元数据。
+- 新增可靠串行化 `local_fs.append_text`，并发追加不丢内容。
+- 新增 SHA256 保护 `local_fs.apply_patch`，精确替换次数校验。
+- 新增 UTF-8 BOM、UTF-16LE BOM 与 UTF-16BE BOM 检测与保留。
+- `write_text` 更新为默认保留既有文件编码。
+- 扩展集成覆盖：UTF-16、行区间、补丁不匹配处理与并发追加。
 
 ## 0.5.3 - 2026-07-16
 
-- Added a detached hidden execution runner so PowerShell/Python jobs survive MCP process restarts.
-- Persisted running job PID, state, output paths, and completion results before a job finishes.
-- Added startup recovery for running jobs and exact post-restart status/output retrieval.
-- Switched job completion tracking to the runner's `close` event so redirected output is flushed before completion.
-- Added atomic JSON backups and automatic recovery of corrupted state files.
-- Added audit, watchdog, MCP, and SSH log rotation plus completed-job output tail limits.
-- Added end-to-end crash recovery, corrupted-state recovery, rotation, and output trimming tests.
+- 新增分离隐藏执行 runner，PowerShell/Python 任务在 MCP 进程重启后存活。
+- 任务结束前持久化运行中任务 PID、状态、输出路径与完成结果。
+- 新增运行中任务启动恢复与精确的重启后状态/输出获取。
+- 任务完成跟踪切换到 runner 的 `close` 事件，重定向输出在完成前刷出。
+- 新增原子 JSON 备份与损坏状态文件自动恢复。
+- 新增审计、watchdog、MCP 与 SSH 日志轮转，以及完成任务输出尾部限制。
+- 新增端到端崩溃恢复、损坏状态恢复、轮转与输出裁剪测试。
 
 ## 0.5.2 - 2026-07-16
 
-- Added normalized path-level locking for file creation, overwrite, copy, move, mkdir, and trash operations.
-- Added a second SHA256 check immediately before replacing an existing file.
-- Replaced delete-then-rename overwrite behavior with backup, replacement, and rollback handling.
-- Added concurrent overwrite and concurrent creation integration tests.
-- Added `package.json` as the single runtime version source and standard test/service scripts.
+- 文件创建、覆盖、复制、移动、mkdir 与回收站操作新增规范化路径级锁。
+- 替换既有文件前立即新增第二次 SHA256 校验。
+- 删除后重命名的覆盖行为替换为备份、替换与回滚处理。
+- 新增并发覆盖与并发创建集成测试。
+- `package.json` 成为唯一运行时版本源与标准测试/服务脚本。
 
 ## 0.5.1 - 2026-07-16
 
-- Added fully hidden `wscript.exe` launchers for the MCP and reverse tunnel watchdogs.
-- Added automatic MCP restart and SSH tunnel reconnection with exponential backoff.
-- Switched production mode to full local file and script execution trust.
-- Added full-trust and failure-recovery integration coverage.
+- MCP 与反向隧道 watchdog 新增完全隐藏的 `wscript.exe` 启动器。
+- 新增自动 MCP 重启与 SSH 隧道指数退避重连。
+- 生产模式切换到本地文件与脚本执行全信任。
+- 新增 full-trust 与故障恢复集成覆盖。

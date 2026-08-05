@@ -1,33 +1,30 @@
-# Hanako Local Bridge Cloud Deployment Guide
+# Hanako Local Bridge 云端部署指南
 
-This is the repository-safe cloud deployment guide. It intentionally omits
-live passwords, access keys, device credentials, and private infrastructure
-backups.
+本指南为仓库安全版云端部署指南。它有意省略线上密码、访问密钥、设备凭证与私有基础设施备份。
 
-## Components
+## 组件
 
 ```text
-Windows stable bridge: 1.4.9
-Windows Rust preview:  2.0.0-alpha.15
-Cloud Hana:            current compatible deployment
-Device Router:         2.0.0-alpha.2 (Rust)
+Windows 本地桥：    2.0.0-alpha.22（Rust）
+Cloud Hana：        当前兼容部署
+设备路由器：        2.0.0-alpha.2（Rust）
 ```
 
-The Windows bridge actively connects to the cloud:
+Windows 桥主动连接云端：
 
 ```text
-Windows Local Bridge
+Windows 本地桥
   -> wss://your-server.example.com/local-bridge/connect
   -> Cloud Hana LocalBridgeGateway
-  -> Device Router on 127.0.0.1:18786
-  -> local_fs / local_exec / local_device tools
+  -> 设备路由器 127.0.0.1:18786
+  -> local_fs / local_exec / local_device 工具
 ```
 
-The production endpoint uses HTTPS/WSS with a trusted certificate and automatic Certbot renewal.
+生产端点使用带受信证书的 HTTPS/WSS，并由 Certbot 自动续期。
 
-## Windows Configuration
+## Windows 配置
 
-Start from `config.example.json`:
+以 `config.example.json` 为起点：
 
 ```json
 {
@@ -44,53 +41,44 @@ Start from `config.example.json`:
 }
 ```
 
-Install the background task:
+运行安装器（`HanakoLocalBridge-Setup.exe`）完成安装。安装器会创建计划任务并直接启动 `hanako-bridge.exe`，无需额外服务脚本。
 
-```powershell
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
-  -File .\install-background-service.ps1
-```
-
-Check local status:
-
-```powershell
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass `
-  -File .\status.ps1
-```
-
-Expected state:
+检查本地状态：打开管理器（托盘图标）查看概览，或访问：
 
 ```text
-Bridge version: 1.4.1
-Cloud status: active
-MCP task: Running
-Legacy Tunnel task: Ready
+http://127.0.0.1:<approvalPort>/manager/
 ```
 
-## First Device Claim
+预期状态：
 
-1. Install and start the Windows bridge.
-2. Open the Hana web client on the same computer.
-3. Sign in with a Hana web access key.
-4. The browser reads the loopback client identity endpoint.
-5. The authenticated browser claims the pending bridge connection.
-6. The bridge stores a separate cloud device credential.
+```text
+Bridge 版本：2.0.0-alpha.22
+云端状态：active
+后台任务：Running
+```
 
-The Hana web access key is never stored by the bridge.
+## 首次设备认领
 
-## Cloud Services
+1. 安装并启动 Windows 桥
+2. 在另一台电脑上打开 Hana 网页客户端
+3. 使用 Hana 网页访问密钥登录
+4. 浏览器读取本机回环身份端点
+5. 已认证的浏览器认领待处理的桥连接
+6. 桥保存独立的云端设备凭证
 
-Build `hanako-device-router` for Linux x86-64, deploy it to a root-owned
-application directory, and use `cloud/hanako-local-device-router.service` as
-the systemd template.
+Hana 网页访问密钥永远不会被桥保存。
 
-The router must only listen on:
+## 云端服务
+
+为 Linux x86-64 构建 `hanako-device-router`，部署到 root 所有的应用目录，并将 `cloud/hanako-local-device-router.service` 作为 systemd 模板。
+
+路由器只允许监听：
 
 ```text
 127.0.0.1:18786
 ```
 
-Production layout:
+生产布局：
 
 ```text
 /opt/hanako-local-device-router/hanako-device-router
@@ -100,12 +88,9 @@ Production layout:
 /etc/systemd/system/hanako-local-device-router.service
 ```
 
-Before replacing the Node router, create a root-only timestamped backup of the
-application directory and systemd unit. Stage the Rust binary as
-`hanako-device-router.new`, validate it with `file`, `ldd`, and `sha256sum`,
-then stop the old service and atomically rename the staged binary.
+替换 Node 路由器前，先对应用目录与 systemd 单元做仅 root 可读的时间戳备份。将 Rust 二进制暂存为 `hanako-device-router.new`，用 `file`、`ldd` 与 `sha256sum` 验证后，停止旧服务并原子重命名暂存二进制。
 
-After switching:
+切换后：
 
 ```bash
 systemctl daemon-reload
@@ -114,12 +99,9 @@ systemctl is-active hanako-local-device-router
 curl -fsS http://127.0.0.1:18786/health
 ```
 
-Rollback restores the saved Node unit and restarts the same service name. Keep
-`device-router.cjs`, `devices.json`, `tools-cache.json`, and
-`offline-queue.json` until the Rust deployment has completed its observation
-period.
+回滚时恢复保存的 Node 单元并重启同一服务名。在 Rust 部署完成观测期之前，保留 `device-router.cjs`、`devices.json`、`tools-cache.json` 与 `offline-queue.json`。
 
-The cloud Hana process exposes:
+云端 Hana 进程暴露：
 
 ```text
 GET  /local-bridge/connect
@@ -127,16 +109,16 @@ POST /api/local-bridge/claim
 GET  /api/local-bridge/devices
 ```
 
-Internal forwarding routes must remain loopback-only:
+内部转发路由必须仅限回环：
 
 ```text
 POST /internal/local-bridge/devices/:deviceId/mcp
 GET  /internal/local-bridge/devices/:deviceId/health
 ```
 
-## Reverse Proxy
+## 反向代理
 
-The reverse proxy serves signed update artifacts directly and preserves WebSocket upgrades for the Hana application:
+反向代理直接提供签名更新产物，并为 Hana 应用保留 WebSocket 升级：
 
 ```nginx
 location = /local-bridge/releases { return 308 /local-bridge/releases/; }
@@ -164,25 +146,25 @@ location / {
 }
 ```
 
-## Verification
+## 验证
 
-Verify all layers:
+逐层验证：
 
 ```text
-Public update manifest and ZIP return HTTP 200 without GitHub authentication
-Windows /health reports version 1.4.9 and cloud.status=active
-Cloud /api/local-bridge/devices reports the device online
-Router /health reports version 2.0.0-alpha.2, 34 tools, and all expected devices online
-local_device.devices succeeds through the router
-local_fs.roots succeeds with an explicit deviceId
-local_fs.read_text works through the router
-Stopping the Windows service makes the router report offline
-Starting the scheduled task restores active/online automatically
+公开更新清单与 ZIP 无需 GitHub 认证即返回 HTTP 200
+Windows /health 报告版本与 cloud.status=active
+云端 /api/local-bridge/devices 报告设备在线
+路由器 /health 报告版本、34 个工具与所有预期设备在线
+local_device.devices 经路由器调用成功
+local_fs.roots 带显式 deviceId 调用成功
+local_fs.read_text 经路由器调用成功
+停止 Windows 服务后路由器报告离线
+启动计划任务后自动恢复 active/online
 ```
 
-## Backups
+## 备份
 
-Back up locally:
+本机备份：
 
 ```text
 config.json
@@ -190,15 +172,13 @@ data/
 logs/
 ```
 
-Back up on the server:
+服务器备份：
 
 ```text
-Hana home data
+Hana 主目录数据
 local-bridge-devices.json
-Device Router configuration and offline queue
-Cloud Hana source patches and runtime artifacts
+设备路由器配置与离线队列
+Cloud Hana 源码补丁与运行产物
 ```
 
-Never copy one `cloud-identity.json` to two computers that will run
-simultaneously. They would share one identity and replace each other's active
-connection.
+永远不要把同一个 `cloud-identity.json` 复制到两台会同时运行的电脑。它们会共享同一身份并互相顶掉对方的活跃连接。

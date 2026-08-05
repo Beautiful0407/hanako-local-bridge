@@ -15,8 +15,8 @@ Manual revision: 1
 - Keep search, transactions, history, sync and cognitive event support in the same repository,
   protocol family and management experience. Separate RFCs or milestones do not create separate
   products.
-- Keep legacy Node, PowerShell, VBS and WinUI code only for migration, compatibility, overwrite
-  takeover and rollback tests. Do not add product features to legacy implementations.
+- The legacy Node, PowerShell, VBS and WinUI implementation was removed in 2.0.0-alpha.22.
+  Rollback and compatibility fixtures can be restored from Git history when needed.
 
 ## Contents
 
@@ -71,7 +71,7 @@ Run `inspect-environment.ps1` before editing. Confirm:
 - repository root and remote;
 - current branch, commit, tag and dirty files;
 - workspace and stable package versions;
-- Rust, Cargo, Node, npm, Git and GitHub CLI availability;
+- Rust, Cargo, Git and GitHub CLI availability;
 - signing key presence without reading or printing it;
 - release and Debug binaries;
 - installed Bridge health and version;
@@ -81,7 +81,6 @@ Windows command rules:
 
 - use PowerShell-native file operations;
 - use `rg`/`rg --files` for search;
-- use `npm.cmd` and `npx.cmd`;
 - invoke repository scripts through
   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File`;
 - do not use Bash heredocs in PowerShell;
@@ -112,8 +111,7 @@ $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 | Native tray/window/single instance | `apps/hanako-manager` | Manager unit tests and real native run |
 | Update transaction/signature/Shell integration | `apps/hanako-updater` | Maintenance tests and update smoke |
 | Installer/bootstrap/uninstall removal | `apps/hanako-installer` | Installer unit and installer smoke |
-| Device routing/offline queue | `apps/hanako-device-router` | Router unit and Node protocol tests |
-| Stable Node compatibility | `server.cjs`, `lib`, PowerShell | `npm.cmd test` or selected legacy tests |
+| Device routing/offline queue | `apps/hanako-device-router` | Router unit and protocol tests |
 | Release feed/VPS docs | release docs and operations record | Public manifest, hashes, stable isolation |
 | Codex Skill | `codex-skills/hanako-local-bridge-dev` | refresh, validate, sync installed copy |
 
@@ -204,7 +202,7 @@ cargo build --workspace --release
 cargo build --workspace
 ```
 
-The explicit Debug build matters because Node integration scripts launch binaries under
+The explicit Debug build matters because the Node-based integration scripts launch binaries under
 `target\debug`.
 
 ### Rust protocol and runtime tests
@@ -241,21 +239,6 @@ if ($manager.ExitCode -ne 0) {
 
 Also inspect the real installed manager for window size, tray menu, double-click restore, close
 behavior and single-instance handling.
-
-### Legacy stable tests
-
-Use selected `npm.cmd` scripts while changing shared config, migration, stable installer or Node
-compatibility:
-
-```powershell
-npm.cmd run check
-npm.cmd run test:manager-command
-npm.cmd run test:configure
-npm.cmd run test:update-signature
-npm.cmd test
-```
-
-Do not run the full legacy suite automatically for an isolated Rust-only documentation change.
 
 ## Debugging Playbooks
 
@@ -431,7 +414,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 
 ## Known Hazards
 
-- `npm.ps1` may be blocked; use `npm.cmd`.
 - Directly invoking `.ps1` may be blocked; use `powershell.exe -ExecutionPolicy Bypass -File`.
 - Console encoding can corrupt Chinese CLI arguments passed to generators; validate UTF-8 files.
 - `Get-NetTCPConnection` can be permission-sensitive; use `netstat -ano` as a lower-layer check.

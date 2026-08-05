@@ -80,18 +80,12 @@ function Get-WorkspaceVersion {
 function Get-StableVersion {
   param([string]$Root)
 
-  $packagePath = Join-Path $Root "package.json"
-  if (-not (Test-Path -LiteralPath $packagePath)) {
-    return $null
+  # Stable product version now comes from the Cargo workspace metadata.
+  $bridge = Get-RustVersion -Root $Root
+  if ($bridge) {
+    return $bridge
   }
-  try {
-    return [string](
-      Get-Content -LiteralPath $packagePath -Raw -Encoding utf8 |
-        ConvertFrom-Json
-    ).version
-  } catch {
-    return $null
-  }
+  return $null
 }
 
 function Get-ReleaseArtifacts {
@@ -232,7 +226,6 @@ $result = [ordered]@{
     cargo = Invoke-ToolVersion "cargo" @("--version")
     rustc = Invoke-ToolVersion "rustc" @("--version")
     node = Invoke-ToolVersion "node" @("--version")
-    npm = Invoke-ToolVersion "npm.cmd" @("--version")
     gh = Invoke-ToolVersion "gh" @("--version")
     python = Invoke-ToolVersion "python" @("--version")
   }

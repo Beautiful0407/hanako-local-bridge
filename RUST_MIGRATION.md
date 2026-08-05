@@ -1,18 +1,14 @@
-# Hanako Local Bridge Rust Migration
+# Hanako Local Bridge Rust 迁移说明
 
-## Status
+## 状态
 
-The Rust implementation is currently `2.0.0-alpha.22`. The legacy Node.js / PowerShell / VBS / WinUI implementation was removed in alpha.22; the repository now contains only the Rust workspace. Rollback remains possible via Git history.
+Rust 实现当前版本为 `2.0.0-alpha.22`。旧版 Node.js / PowerShell / VBS / WinUI 实现已在 alpha.22 移除，仓库现在只包含 Rust 工作区。如需回滚旧实现，可从 Git 历史恢复。
 
-Alpha 12 makes signed remote package downloads retryable and resumable. Partial ZIP bytes are retained across attempts, subsequent requests use HTTP Range, servers that ignore Range restart safely, and a connection-close error is accepted only if the file already reached the signed manifest size before SHA256 verification. Alpha 11's Shell integration migration, Alpha 10's unified entry, Alpha 9's one-minute recovery trigger, and Alpha 8's Windows GUI subsystem behavior remain in place. Closing the manager still leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
+## 为什么用 Rust
 
-Do not copy the Alpha EXEs over an existing installation manually. Use the embedded Alpha 12 installer. It supports first install and overwrite repair of an existing Node or Alpha installation while preserving `config.json`, `data`, `logs`, cloud identity, approvals, execution authorizations, jobs, and update result history.
+旧版安装包捆绑了 Node.js、PowerShell/VBS watchdog 逻辑和自包含的 .NET/Windows App SDK 管理器，这些实现在 `2.0.0-alpha.22` 中已移除。Rust 设计现在产出多个 Windows 运行时可执行文件加一个引导安装器，并复用受支持 Windows 系统上已有的 WebView2 运行时。这些是同一个 Hanako Local Bridge 产品内部的角色，不是独立产品：用户拿到的是同一个安装器、同一个管理器入口、同一个配置模型、同一个版本、同一条更新/修复链路。
 
-## Why Rust
-
-The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. Those implementations were removed in `2.0.0-alpha.22`; the Rust design now produces the Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems. These are roles inside the single Hanako Local Bridge product, not separate products: users receive one installer, one manager entry, one configuration model, one version and one update/repair flow.
-
-Measured from the rebuilt Windows x64 Alpha 12 release:
+从重建的 Windows x64 Alpha 12 发布版实测：
 
 ```text
 hanako-bridge.exe       6,283,776 bytes
@@ -22,9 +18,9 @@ runtime ZIP             6,705,761 bytes
 embedded installer      8,930,304 bytes
 ```
 
-For comparison, the stable `1.4.9` installer is about `95.91 MiB`. On the cloud host, the Rust device router used about `5.1 MiB` after the observation period; the replaced Node router used about `48.8 MiB`.
+对比：稳定版 `1.4.9` 安装器约 `95.91 MiB`。云端主机上，Rust 设备路由器观测期后占用约 `5.1 MiB`，被替换的 Node 路由器约 `48.8 MiB`。
 
-## Workspace
+## 工作区结构
 
 ```text
 Cargo.toml
@@ -36,7 +32,7 @@ apps/
   hanako-device-router/
   hanako-installer/
   hanako-manager/
-  hanako-updater/          # hanako-maintenance.exe
+  hanako-updater/          # 生成 hanako-maintenance.exe
 tests/
   rust-integration.test.cjs
   rust-device-router.test.cjs
@@ -48,63 +44,63 @@ tests/
 
 ### `hanako-bridge-core`
 
-- Deep-merges existing JSON configuration with defaults.
-- Expands `%INSTALLDIR%` and other environment variables.
-- Migrates legacy cloud and update URLs.
-- Persists stable device identity.
-- Writes JSON atomically with `.bak` recovery and corrupt-file preservation.
-- Resolves `local://`, `device://`, aliases, and approved absolute paths.
+- 将既有 JSON 配置与默认值做深合并
+- 展开 `%INSTALLDIR%` 及其他环境变量
+- 迁移旧版云与更新地址
+- 持久化稳定的设备身份
+- 原子写入 JSON，带 `.bak` 恢复与损坏文件保留
+- 解析 `local://`、`device://`、别名与已授权的绝对路径
 
 ### `hanako-bridge`
 
-- Serves the token-protected MCP endpoint and local manager API with Axum.
-- Registers all 31 local filesystem and execution tools.
-- Supports full-trust and approval modes.
-- Reads and writes UTF-8, UTF-16LE, and UTF-16BE while preserving BOM state.
-- Uses atomic replacement and SHA256 preconditions for concurrent writes.
-- Supports bounded search, image blocks, polling watches, recoverable trash, copy, move, append, and exact patching.
-- Executes approved PowerShell and Python scripts through an isolated job runner.
-- Persists jobs, supports timeout and cancellation, and recovers runner results after service restart.
-- Reuses Ed25519 cloud identity and reconnects to the cloud WebSocket with heartbeat and backoff.
-- Installs or repairs a scheduled task that starts the Rust service directly.
+- 使用 Axum 提供带 Token 保护的 MCP 端点与本地管理器 API
+- 注册全部 31 个本地文件与执行工具
+- 支持 full-trust 与 approval 两种模式
+- 读写 UTF-8、UTF-16LE、UTF-16BE，并保留 BOM 状态
+- 并发写入使用原子替换与 SHA256 前置校验
+- 支持受限搜索、图片分块、轮询 watch、可恢复回收站、复制、移动、追加与精确补丁
+- 通过隔离的 job runner 执行已授权的 PowerShell 与 Python 脚本
+- 持久化任务，支持超时与取消，服务重启后恢复 runner 结果
+- 复用 Ed25519 云端身份，带心跳与退避重连云端 WebSocket
+- 安装或修复直接启动 Rust 服务的计划任务
 
 ### `hanako-manager`
 
-- Uses Winit, Wry, WebView2, and `tray-icon`.
-- Shows overview, diagnostics, configured roots, logs, and settings.
-- Hides to the system tray when minimized or closed.
-- Restores on tray double-click and provides Open and Exit menu commands.
-- Starts or repairs the Rust service when the local manager endpoint is unavailable.
-- Uses the Windows GUI subsystem in release builds, so no console window is shown.
+- 使用 Winit、Wry、WebView2 与 `tray-icon`
+- 展示概览、诊断、已配置根目录、日志与设置
+- 最小化或关闭时隐藏到系统托盘
+- 托盘双击恢复窗口，提供打开与退出菜单命令
+- 本地管理器端点不可用时，启动或修复 Rust 服务
+- 发布构建使用 Windows GUI 子系统，不显示控制台窗口
 
 ### `hanako-maintenance.exe`
 
-- Checks local or HTTPS manifests and verifies the legacy RSA XML public key format.
-- Downloads packages with HTTPS, validates SHA256 and size, and rejects HTTP.
-- Extracts ZIP files with traversal protection.
-- Applies payloads transactionally and preserves `config.json`, `data`, `logs`, and unknown user files.
-- Removes stale files only from the previous managed payload manifest.
-- Runs as a detached worker, records `data/update-state.json`, and rolls back on replacement failure.
-- Provides the Rust `pack` command for creating runtime-only ZIP packages and update manifests.
+- 检查本地或 HTTPS 清单，验证旧版 RSA XML 公钥格式
+- 使用 HTTPS 下载安装包，校验 SHA256 与大小，拒绝 HTTP
+- 解压 ZIP 带目录穿越防护
+- 事务化应用安装包，保留 `config.json`、`data`、`logs` 与未知用户文件
+- 只按上一份受管清单删除过期文件
+- 以独立 worker 运行，记录 `data/update-state.json`，替换失败自动回滚
+- 提供 Rust `pack` 命令，用于生成仅含运行时的 ZIP 包与更新清单
 
 ### `HanakoLocalBridge-Setup.exe`
 
-- Embeds the Rust runtime ZIP at build time.
-- Installs per-user under `%LOCALAPPDATA%\HanakoLocalBridge` without administrator elevation.
-- Creates desktop and Start menu shortcuts using Rust.
-- Registers a per-user uninstall entry and uses a detached Rust uninstall worker.
-- Uses the same payload transaction as online updates for overwrite installation.
+- 构建时内嵌 Rust 运行时 ZIP
+- 按用户安装到 `%LOCALAPPDATA%\HanakoLocalBridge`，无需管理员提权
+- 使用 Rust 创建桌面与开始菜单快捷方式
+- 注册按用户的卸载条目，使用独立的 Rust 卸载 worker
+- 覆盖安装与在线更新使用同一套负载事务
 
 ### `hanako-device-router`
 
-- Replaces `cloud/device-router.cjs` on Linux.
-- Keeps `/health`, `/mcp`, and `/devices/register`.
-- Preserves the 34-tool surface, `device://<deviceId>/...` selection, token forwarding, and offline queue files.
-- Uses the same JSON config, cache, and queue paths as the Node router.
+- 在 Linux 上替代 `cloud/device-router.cjs`
+- 保留 `/health`、`/mcp` 与 `/devices/register`
+- 保持 34 个工具面、`device://<deviceId>/...` 选择、Token 转发与离线队列文件
+- 与 Node 路由器使用相同的 JSON 配置、缓存与队列路径
 
-## Toolchain
+## 工具链
 
-Verified toolchain:
+已验证工具链：
 
 ```text
 Rust/Cargo: 1.97.1
@@ -112,7 +108,7 @@ Visual Studio Build Tools: C:\BuildTools2026
 Windows SDK: 10.0.26100.0
 ```
 
-Load the MSVC environment in PowerShell before Cargo builds:
+Cargo 构建前需在 PowerShell 中加载 MSVC 环境：
 
 ```powershell
 $vcvars = 'C:\BuildTools2026\VC\Auxiliary\Build\vcvars64.bat'
@@ -125,9 +121,9 @@ foreach ($line in $lines) {
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 ```
 
-## Build And Test
+## 构建与测试
 
-Run the strict validation chain:
+运行严格验证链：
 
 ```powershell
 cargo fmt --all -- --check
@@ -146,17 +142,17 @@ $entry = Start-Process target\release\hanako-bridge.exe -ArgumentList '--smoke-t
 if ($entry.ExitCode -ne 0) { throw "Unified product entry smoke test failed" }
 ```
 
-The integration tests use random loopback ports and temporary roots. The installer smoke test launches a detached legacy Node process through VBS, verifies Alpha 12 takeover, checks that shortcuts target `hanako-bridge.exe`, asserts the installed Bridge PE subsystem is Windows GUI, checks the one-minute task trigger, calls the installed manager repair API, checks overwrite and repeated product-entry single-instance behavior, closes the manager while confirming the Bridge stays healthy, force-terminates the Bridge, waits for a different process ID to recover without a visible window, and then uninstalls. The update smoke test installs an Alpha 11 payload, injects the current Alpha 12 maintenance binary, and verifies signed update handoff plus shortcut/uninstall migration and rollback. Maintenance unit coverage deliberately interrupts an HTTP body and requires a Range resume; an ignored explicit probe verifies a real release URL, size, and SHA256.
+集成测试使用随机回环端口与临时根目录。安装器冒烟测试会通过 VBS 启动一个分离的旧版 Node 进程，验证 Rust 版接管，检查快捷方式指向 `hanako-bridge.exe`，断言安装后的 Bridge PE 子系统为 Windows GUI，检查一分钟计划任务触发器，调用已安装管理器的修复 API，验证覆盖安装与重复产品入口的单实例行为，关闭管理器后确认 Bridge 保持健康，强制终止 Bridge 后等待不同进程 ID 无窗口恢复，最后卸载。更新冒烟测试安装一份 Alpha 11 负载，注入当前 Alpha 12 维护二进制，验证签名更新交接、快捷方式/卸载迁移与回滚。维护单元测试刻意中断 HTTP 响应体并要求 Range 续传；显式探针会忽略并验证真实发布 URL、大小与 SHA256。
 
-## Release Packaging
+## 发布打包
 
-The production private key remains outside the repository:
+生产私钥不在仓库内：
 
 ```text
 %USERPROFILE%\.hanako-update-signing\private-key.xml
 ```
 
-Build a signed prerelease:
+构建签名预发布版：
 
 ```powershell
 cargo build --workspace --release
@@ -177,28 +173,28 @@ $env:HANA_INSTALLER_PAYLOAD = (
 cargo build -p hanako-bootstrap --release
 ```
 
-## Preview
+## 预览
 
-Set `HANA_LOCAL_BRIDGE_CONFIG` to an isolated config before starting a preview:
+启动预览前，将 `HANA_LOCAL_BRIDGE_CONFIG` 指向隔离的配置：
 
 ```powershell
 $env:HANA_LOCAL_BRIDGE_CONFIG = 'C:\path\to\preview\config.json'
 target\debug\hanako-bridge.exe --service
 ```
 
-Open:
+打开：
 
 ```text
 http://127.0.0.1:<approvalPort>/manager/
 ```
 
-Do not point a development preview at the production data directory.
+不要将开发预览指向生产数据目录。
 
-## Compatibility
+## 兼容性
 
-The Rust service reads the existing camelCase `config.json` structure and keeps unknown configuration fields during deep merge. It keeps the established storage filenames and cloud identity format so the final installer can migrate without forcing every device to be claimed again.
+Rust 服务读取既有 camelCase 的 `config.json` 结构，深合并时保留未知配置字段。它沿用既有的存储文件名与云端身份格式，因此最终安装器可以在不强制每台设备重新认领的情况下完成迁移。
 
-Supported compatibility paths include:
+受支持的兼容路径：
 
 ```text
 local://<alias>/...
@@ -206,7 +202,7 @@ device://<deviceId>/C:/...
 C:\absolute\path
 ```
 
-The final migration must verify these files across overwrite installation and online update:
+最终迁移必须验证这些文件在覆盖安装与在线更新后的状态：
 
 ```text
 config.json
@@ -221,16 +217,16 @@ data/jobs/
 logs/
 ```
 
-## Verified Deployment
+## 已验证部署
 
-The Linux router was built on Ubuntu 22.04 with Rust `1.97.1` and deployed as:
+Linux 路由器在 Ubuntu 22.04 上使用 Rust `1.97.1` 构建，部署为：
 
 ```text
 /opt/hanako-local-device-router/hanako-device-router
 /etc/systemd/system/hanako-local-device-router.service
 ```
 
-Live verification on July 19, 2026 confirmed:
+2026 年 7 月 19 日实测确认：
 
 ```text
 router version: 2.0.0-alpha.2
@@ -241,15 +237,15 @@ local_fs.roots routed to your-laptop-id: success
 Hana web entry: HTTP 200 and connected UI
 ```
 
-The previous Node script and a root-only timestamped backup remain on the server for rollback.
+旧版 Node 脚本与仅 root 可读的时间戳备份仍保留在服务器上用于回滚。
 
-## Remaining Production Work
+## 剩余生产工作
 
-1. Publish the signed Alpha installer and manifest to the separate prerelease channel.
-2. Verify installation, tray behavior, update, uninstall, and reboot recovery on clean Windows 10 and Windows 11 virtual machines.
-3. Run a staged migration on a non-primary device before offering the Rust installer to the stable fleet.
-4. The legacy Node/PowerShell/VBS/WinUI implementation was removed in alpha.22; if a rollback to the legacy stack is ever needed, restore it from Git history.
+1. 将签名后的 Alpha 安装器与清单发布到独立预发布频道
+2. 在干净的 Windows 10 与 Windows 11 虚拟机上验证安装、托盘行为、更新、卸载与重启恢复
+3. 在非主力设备上先做分阶段迁移，再向稳定设备群提供 Rust 安装器
+4. 旧版 Node/PowerShell/VBS/WinUI 实现已在 alpha.22 移除；如将来需要回滚到旧技术栈，从 Git 历史恢复
 
-## Release Rule
+## 发布规则
 
-Every committed development stage must bump the product version. Do not publish an installer or update manifest from an uncommitted working tree, and do not overwrite the stable channel with an Alpha build.
+每个已提交的开发阶段都必须 bump 产品版本。不要从未提交的工作区发布安装器或更新清单，不要用 Alpha 构建覆盖稳定频道。

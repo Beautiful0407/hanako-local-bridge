@@ -51,7 +51,7 @@ Confirm:
 - next version is unused;
 - previous package needed by update smoke still exists;
 - signing key file exists;
-- Rust/MSVC/Node toolchains work;
+- Rust/MSVC toolchain works;
 - VPS SSH identity proves the expected hostname and user before writes.
 
 Signing key location:
@@ -93,7 +93,7 @@ node tests\rust-recovery.test.cjs
 node tests\rust-device-router.test.cjs
 ```
 
-Run affected legacy tests when migration or shared config behavior changes.
+Run the workspace and integration tests when migration or shared config behavior changes.
 
 ## Signed Package And Installer
 

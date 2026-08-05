@@ -117,8 +117,8 @@ config.json SHA256 未变化
 - 本地接口只监听 loopback。不要把 approval token、设备私钥、claim token、登录密钥、
   签名私钥或完整生产日志写入 Git、诊断输出或开发手册。
 - 不要手工把 `target\release` 中的 EXE 覆盖到正式安装目录。使用内嵌安装器或签名更新。
-- PowerShell 脚本使用 `powershell.exe -ExecutionPolicy Bypass -File`；Node 命令优先
-  使用 `npm.cmd`/`npx.cmd`，避免本机执行策略拦截 `.ps1` shim。
+- PowerShell 脚本使用 `powershell.exe -ExecutionPolicy Bypass -File`；Rust 集成测试
+  直接用 `node tests\rust-*.cjs` 运行，不要用 npm 脚本。
 
 ## Change Workflow
 

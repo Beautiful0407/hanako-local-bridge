@@ -1,9 +1,10 @@
 # Hanako Local Bridge
 
 > Windows 本地 MCP 桥：文件读写、PowerShell/Python 执行、多设备路由与签名自动更新。
-> Windows-local MCP bridge for Hana Agent: filesystem access, script execution, device routing, and signed auto-updates.
 
 Hanako Local Bridge 是云端 Hana Agent 与 Windows 电脑之间的本地桥。它把 Hana 的能力延伸到 Windows 本地文件系统与 PowerShell/Python 运行时，同时保持连接方向由本机主动发起、所有远程操作可审计、更新必须验签。
+
+本项目使用 Rust 实现（2.0.x），单安装器、单管理器、单配置模型、单版本、单更新链路。
 
 ## 特性
 
@@ -26,11 +27,6 @@ Hanako Local Bridge 是云端 Hana Agent 与 Windows 电脑之间的本地桥。
 - 远程更新经 RSA 签名 + SHA256 + 大小三重校验，HTTP Range 断点续传
 - 本地授权页只监听回环地址，访问密钥不落盘
 
-**纯 Rust 实现（2.0.x）**
-
-- Bridge / Device Router / Manager / Maintenance / Installer 统一 Cargo 工作区
-- 单安装器、单管理器、单配置模型、单版本、单更新链路
-
 ## 架构
 
 ```text
@@ -45,10 +41,10 @@ Windows 本地桥
 Windows 侧组件：
 
   hanako-bridge      本地 MCP 服务（HTTP/WS，默认 8787）
-  hanako-manager     WinUI 3 托盘管理器（自检、诊断、设备认领）
+  hanako-manager     WinUI WebView2 托盘管理器（自检、诊断、设备认领）
   hanako-maintenance 签名更新器（RSA 验签 + SHA256 + 断点续传）
   hanako-bootstrap   内嵌安装器（NSIS 向导 / 静默安装）
-  watchdog           隐藏计划任务，异常退出自动重启
+  计划任务           每分钟触发，异常退出自动重启
 ```
 
 ## 快速开始
@@ -119,10 +115,11 @@ target\release\hanako-maintenance.exe pack `
 
 | 文档 | 内容 |
 |---|---|
+| [RUST_MIGRATION.md](./RUST_MIGRATION.md) | 迁移状态、组件说明与发布流程 |
 | [CLOUD_WEBSOCKET_ARCHITECTURE.md](./CLOUD_WEBSOCKET_ARCHITECTURE.md) | 云端主动连接与认领架构 |
 | [CLOUD_DEPLOYMENT_GUIDE.md](./CLOUD_DEPLOYMENT_GUIDE.md) | 云端部署 |
-| [RUST_MIGRATION.md](./RUST_MIGRATION.md) | 迁移状态与发布流程 |
 | [SECURITY.md](./SECURITY.md) | 安全边界与发布前检查 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更记录 |
 
 ## 安全
 
