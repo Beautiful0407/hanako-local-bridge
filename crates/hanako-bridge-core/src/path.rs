@@ -401,8 +401,8 @@ fn bounded_contains(haystack: &str, needle: &str) -> bool {
         };
         let position = index + relative;
         let end = position + needle.len();
-        let before_ok = position == 0 || !is_path_continuation_byte(haystack, position - 1);
-        let after_ok = end >= haystack.len() || !is_path_continuation_byte(haystack, end);
+        let before_ok = position == 0 || !is_path_continuation_before(haystack, position);
+        let after_ok = end >= haystack.len() || !is_path_continuation_after(haystack, end);
         if before_ok && after_ok {
             return true;
         }
@@ -411,28 +411,52 @@ fn bounded_contains(haystack: &str, needle: &str) -> bool {
     false
 }
 
-fn is_path_continuation_byte(bytes: &[u8], index: usize) -> bool {
-    let byte = bytes[index];
+/// 匹配位置前一个字符是否属于路径延续。
+///
+/// ASCII 用延续字符集;非 ASCII(如中文动词"授权C:\data"中紧贴路径的
+/// 汉字)不视为延续——路径以盘符开头,前面的字符不可能构成更长路径名,
+/// 把它们当边界可避免中文聊天原话无空格紧贴路径时被误拒。
+fn is_path_continuation_before(bytes: &[u8], index: usize) -> bool {
+    let byte = bytes[index - 1];
     if byte.is_ascii() {
-        matches!(
-            byte,
-            b'a'..=b'z'
-                | b'A'..=b'Z'
-                | b'0'..=b'9'
-                | b'_'
-                | b'-'
-                | b'.'
-                | b'$'
-                | b'%'
-                | b'('
-                | b')'
-                | b'~'
-        )
+        is_ascii_continuation(byte)
     } else {
-        // 非 ASCII 字节(如中文文件名的 UTF-8 字节)一律视为路径延续,
-        // 严格拒绝 `C:\资料` 误匹配 `C:\资料库` 这类相邻路径。
-        true
+        false
     }
+}
+
+/// 匹配位置后一个字符是否属于路径延续。
+///
+/// ASCII 用延续字符集;非 ASCII 按 UTF-8 解码:汉字等 alphanumeric 字符
+/// 视为文件名延续(`C:\资料库` 不匹配 `C:\资料`),中文标点(。、等)视为
+/// 边界,避免 "允许访问 C:\资料。" 这类自然表达被误拒。
+fn is_path_continuation_after(bytes: &[u8], end: usize) -> bool {
+    let byte = bytes[end];
+    if byte.is_ascii() {
+        is_ascii_continuation(byte)
+    } else {
+        std::str::from_utf8(&bytes[end..])
+            .ok()
+            .and_then(|text| text.chars().next())
+            .is_some_and(|character| character.is_alphanumeric())
+    }
+}
+
+fn is_ascii_continuation(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'a'..=b'z'
+            | b'A'..=b'Z'
+            | b'0'..=b'9'
+            | b'_'
+            | b'-'
+            | b'.'
+            | b'$'
+            | b'%'
+            | b'~'
+            | b'('
+            | b')'
+    )
 }
 
 #[cfg(test)]
@@ -517,6 +541,11 @@ mod tests {
         // 精确路径 token 匹配通过。
         assert!(quote_contains_path("我允许访问 C:\\data 目录", r"C:\data"));
         assert!(quote_contains_path("允许访问 C:\\data 后继续", r"C:\data"));
+        // 中文标点结尾与中文动词紧贴路径不再误拒(review 修复)。
+        assert!(quote_contains_path("允许访问 C:\\data。", r"C:\data"));
+        assert!(quote_contains_path("允许访问 C:\\资料。", r"C:\资料"));
+        assert!(quote_contains_path("授权C:\\data 目录", r"C:\data"));
+        assert!(quote_contains_path("允许C:\\资料", r"C:\资料"));
         // 相邻目录名不再误匹配(旧 contains 行为会误匹配)。
         assert!(!quote_contains_path(
             "我允许访问 C:\\data2 目录",
