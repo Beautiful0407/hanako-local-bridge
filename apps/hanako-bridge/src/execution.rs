@@ -1574,20 +1574,42 @@ fn validate_chat_authorization(spec: &ExecutionSpec, quote: &str) -> BridgeResul
         ));
     }
     let lower = quote.to_ascii_lowercase();
-    let has_authorization = [
-        "authorize",
-        "allow",
-        "approve",
-        "permit",
-        "permission",
-        "\u{6388}\u{6743}",
-        "\u{5141}\u{8bb8}",
-        "\u{540c}\u{610f}",
-        "\u{6279}\u{51c6}",
-        "\u{51c6}\u{8bb8}",
+    // 否定表述("不要授权"/"don't allow")不得被当作显式授权。
+    if hanako_bridge_core::path::quote_contains_negation(quote) {
+        return Err(BridgeError::tool(
+            "explicit_authorization_required",
+            "the user message must not contain a negation and must explicitly authorize execution",
+        ));
+    }
+    // 英文授权词用边界匹配(disallow 等否定-授权重叠不再被误判为授权词),
+    // 中文授权词用 contains(中文无空格)。
+    let authorized_zh = [
+        "\u{6388}\u{6743}", // 授权
+        "\u{5141}\u{8bb8}", // 允许
+        "\u{540c}\u{610f}", // 同意
+        "\u{6279}\u{51c6}", // 批准
+        "\u{51c6}\u{8bb8}", // 准许
     ]
     .iter()
     .any(|word| lower.contains(word));
+    let authorized_en = [
+        "authorize",
+        "authorized",
+        "authorizing",
+        "allow",
+        "allowed",
+        "allowing",
+        "approve",
+        "approved",
+        "approves",
+        "permit",
+        "permits",
+        "permitted",
+        "permission",
+    ]
+    .iter()
+    .any(|word| hanako_bridge_core::path::quote_contains_token(&lower, word));
+    let has_authorization = authorized_zh || authorized_en;
     let has_execution = [
         "execute",
         "run",

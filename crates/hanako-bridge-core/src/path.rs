@@ -382,6 +382,130 @@ pub fn quote_contains_token(quote: &str, token: &str) -> bool {
     bounded_contains(quote, token)
 }
 
+/// 判断授权原话是否包含否定表述。
+///
+/// 授权词检查用的是子串匹配,"不要授权"/"don't allow" 会命中授权词,
+/// 导致用户明确拒绝的消息被当作显式授权。本函数检出常见中英文否定词
+/// (含 can't/won't/nothing 及 denied/refused 等词形变化),命中即视为
+/// 未授权(fail-closed);中文词用 contains,英文词用独立单词边界匹配,
+/// 标点(! . , 等)对英文单词是边界,字母数字才是延续。
+pub fn quote_contains_negation(quote: &str) -> bool {
+    let lower = quote.to_ascii_lowercase();
+    const NEGATION_ZH: &[&str] = &[
+        "不",
+        "未",
+        "未经",
+        "尚未",
+        "无",
+        "从不",
+        "不要",
+        "不能",
+        "不可以",
+        "不准",
+        "不许",
+        "拒绝",
+        "禁止",
+        "严禁",
+        "切勿",
+        "不得",
+        "勿",
+        "别",
+        "没有",
+        "别让",
+        "别把",
+        "不同意",
+        "无法",
+        "不允许",
+        "绝不",
+    ];
+    const NEGATION_EN: &[&str] = &[
+        "don't",
+        "dont",
+        "can't",
+        "cant",
+        "won't",
+        "wont",
+        "wouldn't",
+        "couldn't",
+        "shouldn't",
+        "isn't",
+        "aren't",
+        "haven't",
+        "doesn't",
+        "didn't",
+        "mustn't",
+        "no",
+        "not",
+        "nothing",
+        "nobody",
+        "nowhere",
+        "never",
+        "without",
+        "unless",
+        "except",
+        "withhold",
+        "deny",
+        "denied",
+        "denying",
+        "denies",
+        "refuse",
+        "refused",
+        "refusing",
+        "prohibit",
+        "prohibited",
+        "prohibits",
+        "forbid",
+        "forbidden",
+        "forbids",
+        "forbade",
+        "cannot",
+        "unable",
+        "decline",
+        "declined",
+        "reject",
+        "rejected",
+    ];
+    NEGATION_ZH.iter().any(|word| lower.contains(word))
+        || lower.contains("n't")
+        || NEGATION_EN
+            .iter()
+            .any(|word| bounded_contains_word(&lower, word))
+}
+
+/// 英文否定词的边界匹配:匹配位置前后必须是"非字母数字"字符。
+///
+/// 与路径延续字符集不同——标点(`!` `.` `,` 等)对英文单词来说是边界,
+/// `"No! I allow..."`、`"I give no. permission..."` 中的 `no` 都应命中,
+/// 而 `node`/`note` 内部不算(`nothing` 由独立词条覆盖)。
+fn bounded_contains_word(haystack: &str, word: &str) -> bool {
+    if word.is_empty() {
+        return true;
+    }
+    let bytes = haystack.as_bytes();
+    let needle = word.as_bytes();
+    if needle.len() > bytes.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index + needle.len() <= bytes.len() {
+        let Some(relative) = bytes[index..]
+            .windows(needle.len())
+            .position(|window| window == needle)
+        else {
+            break;
+        };
+        let position = index + relative;
+        let end = position + needle.len();
+        let before_ok = position == 0 || !bytes[position - 1].is_ascii_alphanumeric();
+        let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if before_ok && after_ok {
+            return true;
+        }
+        index = position + 1;
+    }
+    false
+}
+
 fn bounded_contains(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return true;
@@ -455,6 +579,14 @@ fn is_ascii_continuation(byte: u8) -> bool {
             | b'$'
             | b'%'
             | b'~'
+            | b'#'
+            | b'@'
+            | b'!'
+            | b'+'
+            | b'&'
+            | b'{'
+            | b'['
+            | b'^'
     )
 }
 
@@ -553,6 +685,10 @@ mod tests {
             "允许访问 C:\\data(1) 目录",
             r"C:\data"
         ));
+        // Windows 合法文件名字符(# @ ! + & { [ ^)作为延续。
+        assert!(!quote_contains_path("允许访问 C:\\data#1", r"C:\data"));
+        assert!(!quote_contains_path("允许访问 C:\\data@x", r"C:\data"));
+        assert!(!quote_contains_path("允许访问 C:\\data[1]", r"C:\data"));
         // 相邻目录名不再误匹配(旧 contains 行为会误匹配)。
         assert!(!quote_contains_path(
             "我允许访问 C:\\data2 目录",
@@ -583,5 +719,66 @@ mod tests {
             r"C:\my path\x"
         ));
         assert!(quote_contains_token("empty token", ""));
+    }
+
+    #[test]
+    fn quote_negation_is_rejected() {
+        // 否定句不得被当作显式授权。
+        assert!(quote_contains_negation("不要授权访问 C:\\data"));
+        assert!(quote_contains_negation("不允许访问 C:\\data"));
+        assert!(quote_contains_negation("拒绝访问 C:\\data"));
+        assert!(quote_contains_negation("don't allow access to C:\\data"));
+        assert!(quote_contains_negation("I do not allow access to C:\\data"));
+        assert!(quote_contains_negation(
+            "I give no permission to access C:\\data"
+        ));
+        assert!(quote_contains_negation("I allow no access to C:\\data"));
+        assert!(quote_contains_negation("I dont allow access to C:\\data"));
+        assert!(quote_contains_negation("I can't allow access to C:\\data"));
+        assert!(quote_contains_negation("I wont allow access to C:\\data"));
+        assert!(quote_contains_negation("No! I allow access to C:\\data"));
+        assert!(quote_contains_negation(
+            "I give no. permission to access C:\\data"
+        ));
+        assert!(quote_contains_negation("I authorize nothing on C:\\data"));
+        assert!(quote_contains_negation("I denied access to C:\\data"));
+        assert!(quote_contains_negation(
+            "I refused to allow access to C:\\data"
+        ));
+        assert!(quote_contains_negation(
+            "I wouldn't allow access to C:\\data"
+        ));
+        assert!(quote_contains_negation(
+            "I couldn't allow access to C:\\data"
+        ));
+        assert!(quote_contains_negation(
+            "It isn't safe to allow access to C:\\data"
+        ));
+        assert!(quote_contains_negation("不可以允许访问 C:\\data"));
+        assert!(quote_contains_negation("严禁允许访问 C:\\data"));
+        assert!(quote_contains_negation("不得允许访问 C:\\data"));
+        assert!(quote_contains_negation("我不授权访问 C:\\data"));
+        assert!(quote_contains_negation("未经允许访问 C:\\data"));
+        assert!(quote_contains_negation("我不批准访问 C:\\data"));
+        assert!(quote_contains_negation(
+            "without permission to access C:\\data"
+        ));
+        assert!(quote_contains_negation("别允许访问 C:\\data"));
+        assert!(quote_contains_negation("别授权访问 C:\\data"));
+        assert!(quote_contains_negation(
+            "I withhold permission to access C:\\data"
+        ));
+        assert!(quote_contains_negation("I authorize nowhere on C:\\data"));
+        assert!(quote_contains_negation("I denies access to C:\\data"));
+        // 肯定句不含否定词,不应误判。
+        assert!(!quote_contains_negation("我允许访问 C:\\data 目录"));
+        assert!(!quote_contains_negation("请授权访问 C:\\data"));
+        assert!(!quote_contains_negation("I allow access to C:\\data"));
+        assert!(!quote_contains_negation(
+            "I give permission to access C:\\data"
+        ));
+        assert!(!quote_contains_negation(
+            "I authorize node access on C:\\data"
+        ));
     }
 }
