@@ -8,11 +8,14 @@ $testRoot = Join-Path $buildRoot "rust-installer-smoke-$runId"
 $installRoot = Join-Path $testRoot "install"
 $profileRoot = Join-Path $testRoot "profile"
 $appDataRoot = Join-Path $profileRoot "AppData\Roaming"
-$installer = Join-Path $buildRoot "rust-release-alpha15\HanakoLocalBridge-Setup-2.0.0-alpha.15.exe"
-$payload = Join-Path $buildRoot "rust-release-alpha15\HanakoLocalBridge-2.0.0-alpha.15-win-x64.zip"
-$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-Rustalpha15Smoke"
-$taskName = "Hanako Rust alpha15 Smoke MCP"
-$actionTaskName = "Hanako Rust alpha15 Smoke Manager Action"
+$smokeVersion = $env:HANA_SMOKE_VERSION
+if (-not $smokeVersion) { $smokeVersion = "2.0.0" }
+$smokeLabel = ($smokeVersion -replace '[^a-zA-Z0-9]', '')
+$installer = $env:HANA_SMOKE_INSTALLER
+$payload = $env:HANA_SMOKE_PAYLOAD
+$registrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-Rust${smokeLabel}Smoke"
+$taskName = "Hanako Rust $smokeLabel Smoke MCP"
+$actionTaskName = "Hanako Rust $smokeLabel Smoke Manager Action"
 $diagnosticLog = Join-Path $buildRoot "rust-installer-smoke-stage.log"
 $legacyServer = Join-Path $installRoot "legacy-server.cjs"
 $legacyLauncher = Join-Path $installRoot "run-legacy-hidden.vbs"
@@ -78,10 +81,10 @@ function Test-BridgeHealth {
     $approvalHealth = Invoke-RestMethod "http://127.0.0.1:38888/health"
     return (
       $health.ok -eq $true -and
-      $health.version -eq "2.0.0-alpha.15" -and
+      $health.version -eq $smokeVersion -and
       $approvalHealth.ok -eq $true -and
       $approvalHealth.runtime -eq "rust" -and
-      $approvalHealth.version -eq "2.0.0-alpha.15"
+      $approvalHealth.version -eq $smokeVersion
     )
   } catch {
     return $false
@@ -268,8 +271,8 @@ function Invoke-Installer([string[]]$Arguments) {
 try {
   $stage = "artifact validation"
   Set-Stage $stage
-  Assert-Path $installer "Rust Alpha 15 installer is missing."
-  Assert-Path $payload "Rust Alpha 15 payload is missing."
+  Assert-Path $installer "Rust $smokeVersion installer is missing."
+  Assert-Path $payload "Rust $smokeVersion payload is missing."
 
   New-Item -ItemType Directory -Force -Path $installRoot, $profileRoot, $appDataRoot | Out-Null
 
@@ -309,7 +312,7 @@ try {
       identityFile = ""
     }
     service = [ordered]@{
-      taskPrefix = "Hanako Rust alpha15 Smoke"
+      taskPrefix = "Hanako Rust $smokeLabel Smoke"
       restartDelaySeconds = 3
       tunnelRetryMinSeconds = 3
       tunnelRetryMaxSeconds = 60
@@ -373,7 +376,7 @@ try {
       throw "Product shortcut points to '$shortcutTarget' instead of the unified entry '$bridgePath'."
     }
   }
-  if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-Rustalpha15Smoke")) {
+  if (-not (Test-Path "HKCU:\$registrySubKey")) {
     throw "Rust uninstall registry entry was not created."
   }
 
@@ -459,7 +462,7 @@ try {
   }
   Wait-Until { -not (Test-Path -LiteralPath $installRoot) } "Rust uninstall worker did not remove the test installation."
   Wait-Until { -not (Test-TaskExists) } "Rust uninstall worker did not remove the scheduled task."
-  if (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-Rustalpha15Smoke") {
+  if (Test-Path "HKCU:\$registrySubKey") {
     throw "Rust uninstall worker did not remove the uninstall registry entry."
   }
 
@@ -482,7 +485,7 @@ try {
       Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
   }
-  Remove-Item -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-Rustalpha15Smoke" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath "HKCU:\$registrySubKey" -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $legacyTaskXml -Force -ErrorAction SilentlyContinue
   $env:USERPROFILE = $oldUserProfile
   $env:APPDATA = $oldAppData

@@ -14,15 +14,19 @@ $rollbackProfileRoot = Join-Path $rollbackInstallRoot "profile"
 $rollbackAppDataRoot = Join-Path $rollbackProfileRoot "AppData\Roaming"
 $rollbackLocalAppDataRoot = Join-Path $rollbackProfileRoot "AppData\Local"
 $rollbackRegistrySubKey = "Software\Microsoft\Windows\CurrentVersion\Uninstall\HanakoLocalBridge-RustUpdateRollbackSmoke-$runId"
-$installer = Join-Path $buildRoot "rust-release-alpha15\HanakoLocalBridge-Setup-2.0.0-alpha.15.exe"
-$alpha14Package = Join-Path $buildRoot "rust-release-alpha14\HanakoLocalBridge-2.0.0-alpha.14-win-x64.zip"
-$alpha15Manifest = Join-Path $buildRoot "rust-release-alpha15\update-manifest.json"
-$currentMaintenance = Join-Path $repo "target\release\hanako-maintenance.exe"
+$installer = $env:HANA_SMOKE_INSTALLER
+$previousPackage = $env:HANA_SMOKE_PREVIOUS_PACKAGE
+$newManifest = $env:HANA_SMOKE_NEW_MANIFEST
+$currentMaintenance = if ($env:HANA_SMOKE_MAINTENANCE) { $env:HANA_SMOKE_MAINTENANCE } else { Join-Path $repo "target\release\hanako-maintenance.exe" }
 $oldUserProfile = $env:USERPROFILE
 $oldAppData = $env:APPDATA
 $oldLocalAppData = $env:LOCALAPPDATA
 $oldUninstallKey = $env:HANA_INSTALLER_UNINSTALL_KEY
 $passed = $false
+$previousVersion = $env:HANA_SMOKE_PREVIOUS_VERSION
+if (-not $previousVersion) { $previousVersion = "2.0.0-alpha.22" }
+$newVersion = $env:HANA_SMOKE_NEW_VERSION
+if (-not $newVersion) { $newVersion = "2.0.0" }
 
 function Assert-Path([string]$Path, [string]$Message) {
   if (-not (Test-Path -LiteralPath $Path)) {
@@ -85,9 +89,9 @@ function Wait-UpdateState([string]$StatePath, [string]$Description) {
 }
 
 try {
-  Assert-Path $installer "Rust Alpha 15 installer is missing."
-  Assert-Path $alpha14Package "Rust Alpha 14 payload is missing."
-  Assert-Path $alpha15Manifest "Rust Alpha 15 update manifest is missing."
+  Assert-Path $installer "Rust $newVersion installer is missing."
+  Assert-Path $previousPackage "Rust $previousVersion payload is missing."
+  Assert-Path $newManifest "Rust $newVersion update manifest is missing."
   Assert-Path $currentMaintenance "Current Rust maintenance binary is missing."
   New-Item -ItemType Directory -Force -Path $installRoot, $profileRoot, $appDataRoot, $localAppDataRoot | Out-Null
   $env:USERPROFILE = $profileRoot
@@ -97,17 +101,17 @@ try {
 
   $exitCode = Invoke-GuiProcess $installer @(
     "--payload",
-    $alpha14Package,
+    $previousPackage,
     "--test-mode",
     "--install-root",
     $installRoot
   )
   if ($exitCode -ne 0) {
-    throw "Installing the Alpha 14 payload failed with exit code $exitCode."
+    throw "Installing the $previousVersion payload failed with exit code $exitCode."
   }
   $alpha14Payload = Get-Content -LiteralPath (Join-Path $installRoot "payload-manifest.json") -Raw | ConvertFrom-Json
-  if ($alpha14Payload.version -ne "2.0.0-alpha.14") {
-    throw "The update fixture was not installed at Alpha 14."
+  if ($alpha14Payload.version -ne $previousVersion) {
+    throw "The update fixture was not installed at $previousVersion."
   }
 
   # Exercise the current updater against an older installed payload.
@@ -116,10 +120,10 @@ try {
   Copy-Item -LiteralPath $currentMaintenance -Destination $maintenance -Force
   $currentMaintenanceHash = (Get-FileHash -LiteralPath $currentMaintenance -Algorithm SHA256).Hash
   if ((Get-FileHash -LiteralPath $maintenance -Algorithm SHA256).Hash -ne $currentMaintenanceHash) {
-    throw "The current maintenance binary was not injected into the Alpha 14 fixture."
+    throw "The current maintenance binary was not injected into the $previousVersion fixture."
   }
   if ($oldMaintenanceHash -eq $currentMaintenanceHash) {
-    throw "The Alpha 14 fixture already contains the current maintenance binary."
+    throw "The $previousVersion fixture already contains the current maintenance binary."
   }
 
   New-Item -ItemType Directory -Force -Path `
@@ -139,33 +143,33 @@ try {
   $uninstallKey = "HKCU:\$registrySubKey"
   New-Item -Path $uninstallKey -Force | Out-Null
   Set-ItemProperty -Path $uninstallKey -Name "DisplayIcon" -Value $managerPath
-  Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value "2.0.0-alpha.14"
+  Set-ItemProperty -Path $uninstallKey -Name "DisplayVersion" -Value $previousVersion
 
   $output = & $maintenance apply `
     --install-root $installRoot `
-    --manifest $alpha15Manifest `
-    --expected-version "2.0.0-alpha.15" `
+    --manifest $newManifest `
+    --expected-version $newVersion `
     --test-mode
   if ($LASTEXITCODE -ne 0) {
-    throw "Alpha 14 maintenance launcher failed with exit code $LASTEXITCODE."
+    throw "$previousVersion maintenance launcher failed with exit code $LASTEXITCODE."
   }
   $handoff = $output | ConvertFrom-Json
   if (-not $handoff.started) {
-    throw "Alpha 14 maintenance launcher did not confirm worker handoff."
+    throw "$previousVersion maintenance launcher did not confirm worker handoff."
   }
 
   $statePath = [string]$handoff.statePath
-  $state = Wait-UpdateState $statePath "Alpha 14 to Alpha 15 update"
+  $state = Wait-UpdateState $statePath "$previousVersion to $newVersion update"
   if ($state.status -ne "succeeded") {
-    throw "Alpha 14 to Alpha 15 update failed: $($state | ConvertTo-Json -Compress)"
+    throw "$previousVersion to $newVersion update failed: $($state | ConvertTo-Json -Compress)"
   }
-  if ($state.installedVersion -ne "2.0.0-alpha.15") {
-    throw "Update state did not report Alpha 15."
+  if ($state.installedVersion -ne $newVersion) {
+    throw "Update state did not report $newVersion."
   }
 
   $payload = Get-Content -LiteralPath (Join-Path $installRoot "payload-manifest.json") -Raw | ConvertFrom-Json
-  if ($payload.version -ne "2.0.0-alpha.15") {
-    throw "Installed payload did not advance to Alpha 15."
+  if ($payload.version -ne $newVersion) {
+    throw "Installed payload did not advance to $newVersion."
   }
   $bridgeAfter = Get-FileHash -LiteralPath (Join-Path $installRoot "hanako-bridge.exe") -Algorithm SHA256
   if ($bridgeAfter.Hash -eq $bridgeBefore.Hash) {
@@ -191,7 +195,7 @@ try {
   if (-not [string]::Equals([string]$uninstallProperties.DisplayIcon, $bridgePath, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Online update left DisplayIcon pointing to '$($uninstallProperties.DisplayIcon)' instead of '$bridgePath'."
   }
-  if ([string]$uninstallProperties.DisplayVersion -ne "2.0.0-alpha.15") {
+  if ([string]$uninstallProperties.DisplayVersion -ne $newVersion) {
     throw "Online update did not refresh DisplayVersion."
   }
 
@@ -202,13 +206,13 @@ try {
     $rollbackLocalAppDataRoot | Out-Null
   $exitCode = Invoke-GuiProcess $installer @(
     "--payload",
-    $alpha14Package,
+    $previousPackage,
     "--test-mode",
     "--install-root",
     $rollbackInstallRoot
   )
   if ($exitCode -ne 0) {
-    throw "Installing the rollback Alpha 14 fixture failed with exit code $exitCode."
+    throw "Installing the rollback $previousVersion fixture failed with exit code $exitCode."
   }
   $rollbackMaintenance = Join-Path $rollbackInstallRoot "hanako-maintenance.exe"
   Copy-Item -LiteralPath $currentMaintenance -Destination $rollbackMaintenance -Force
@@ -222,8 +226,8 @@ try {
   $env:HANA_INSTALLER_UNINSTALL_KEY = $rollbackRegistrySubKey
   $rollbackOutput = & $rollbackMaintenance apply `
     --install-root $rollbackInstallRoot `
-    --manifest $alpha15Manifest `
-    --expected-version "2.0.0-alpha.15" `
+    --manifest $newManifest `
+    --expected-version $newVersion `
     --test-mode
   if ($LASTEXITCODE -ne 0) {
     throw "Rollback maintenance launcher failed with exit code $LASTEXITCODE."
@@ -234,15 +238,15 @@ try {
     throw "Shell integration failure was not reported as a failed update: $($rollbackState | ConvertTo-Json -Compress)"
   }
   $rollbackPayload = Get-Content -LiteralPath (Join-Path $rollbackInstallRoot "payload-manifest.json") -Raw | ConvertFrom-Json
-  if ($rollbackPayload.version -ne "2.0.0-alpha.14") {
-    throw "Shell integration failure did not roll the payload back to Alpha 14."
+  if ($rollbackPayload.version -ne $previousVersion) {
+    throw "Shell integration failure did not roll the payload back to $previousVersion."
   }
   if ((Get-FileHash -LiteralPath $rollbackBridge -Algorithm SHA256).Hash -ne $rollbackBridgeBefore) {
-    throw "Shell integration failure did not restore the Alpha 14 bridge binary."
+    throw "Shell integration failure did not restore the $previousVersion bridge binary."
   }
 
   $passed = $true
-  Write-Output "Rust Alpha 14 to Alpha 15 update smoke test passed"
+  Write-Output "Rust $previousVersion to $newVersion update smoke test passed"
 } finally {
   if ($passed -and (Test-Path -LiteralPath $installRoot)) {
     Remove-Item -LiteralPath $installRoot -Recurse -Force
