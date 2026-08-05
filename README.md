@@ -26,10 +26,10 @@ Hanako Local Bridge 是云端 Hana Agent 与 Windows 电脑之间的本地桥。
 - 远程更新经 RSA 签名 + SHA256 + 大小三重校验，HTTP Range 断点续传
 - 本地授权页只监听回环地址，访问密钥不落盘
 
-**多语言实现**
+**纯 Rust 实现（2.0.x）**
 
-- 稳定版：Node.js + PowerShell watchdog + WinUI 3 管理器（v1.4.9）
-- Rust 2.0 预览：Bridge / Device Router / Manager / Maintenance / Installer 统一工作区，正在替换 Node.js 实现
+- Bridge / Device Router / Manager / Maintenance / Installer 统一 Cargo 工作区
+- 单安装器、单管理器、单配置模型、单版本、单更新链路
 
 ## 架构
 
@@ -53,12 +53,14 @@ Windows 侧组件：
 
 ## 快速开始
 
-### 本地构建
+### 构建与测试（Windows，需要 MSVC 工具链）
 
-```bash
-# Rust 工作区（Windows）
-cargo build --workspace --release
+```powershell
+# 严格验证链
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo build --workspace --release
 
 # 集成测试（需要本机桥在运行）
 $env:HANAKO_RUST_BRIDGE_EXE = (Resolve-Path 'target\release\hanako-bridge.exe').Path
@@ -66,10 +68,8 @@ node tests\rust-integration.test.cjs
 node tests\rust-audit.test.cjs
 node tests\rust-recovery.test.cjs
 node tests\rust-device-router.test.cjs
-
-# Node.js 实现
-npm install
-npm run check
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-update-smoke.ps1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-installer-smoke.ps1
 ```
 
 ### 配置
@@ -94,17 +94,13 @@ npm run check
 
 ### 安装为 Windows 后台服务
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-background-service.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\uninstall-background-service.ps1
-```
+Rust 版安装器会创建计划任务并直接启动 `hanako-bridge.exe`，无需额外服务脚本。安装包由 [`apps/hanako-installer`](./apps/hanako-installer) 生成。
 
-### 构建安装器
+### 构建安装器（NSIS 向导外壳）
 
 ```powershell
-# 原生安装器（NSIS 向导 + 静默安装）
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build-installer.ps1
+makensis /DVERSION=<ver> /DSETUP_EXE=<abs path to HanakoLocalBridge-Setup.exe> `
+         /DOUT_FILE=<abs output path> installer\wizard.nsi
 ```
 
 ### 发布更新包
@@ -123,12 +119,9 @@ target\release\hanako-maintenance.exe pack `
 
 | 文档 | 内容 |
 |---|---|
-| [OPERATION_MANUAL.md](./OPERATION_MANUAL.md) | 安装、配置与日常运维 |
-| [DEVELOPMENT_MANUAL.md](./DEVELOPMENT_MANUAL.md) | 开发、测试与发布流程 |
 | [CLOUD_WEBSOCKET_ARCHITECTURE.md](./CLOUD_WEBSOCKET_ARCHITECTURE.md) | 云端主动连接与认领架构 |
-| [CLOUD_DEPLOYMENT_GUIDE.md](./CLOUD_DEPLOYMENT_GUIDE.md) | 云端部署（脱敏） |
-| [WINDOWS_INSTALLER_UPDATE_MANUAL.md](./WINDOWS_INSTALLER_UPDATE_MANUAL.md) | 安装器、迁移与更新 |
-| [RUST_MIGRATION.md](./RUST_MIGRATION.md) | Rust 2.0 迁移状态 |
+| [CLOUD_DEPLOYMENT_GUIDE.md](./CLOUD_DEPLOYMENT_GUIDE.md) | 云端部署 |
+| [RUST_MIGRATION.md](./RUST_MIGRATION.md) | 迁移状态与发布流程 |
 | [SECURITY.md](./SECURITY.md) | 安全边界与发布前检查 |
 
 ## 安全

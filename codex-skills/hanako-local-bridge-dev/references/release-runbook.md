@@ -73,10 +73,7 @@ tests that assert current version
 installer/update smoke source and target versions
 CHANGELOG.md
 README.md
-DEVELOPMENT_MANUAL.md
-OPERATION_MANUAL.md
 RUST_MIGRATION.md
-WINDOWS_INSTALLER_UPDATE_MANUAL.md
 CLOUD_DEPLOYMENT_GUIDE.md
 ```
 

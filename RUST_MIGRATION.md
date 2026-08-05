@@ -2,7 +2,7 @@
 
 ## Status
 
-The Rust implementation is currently `2.0.0-alpha.15`.
+The Rust implementation is currently `2.0.0-alpha.22`. The legacy Node.js / PowerShell / VBS / WinUI implementation was removed in alpha.22; the repository now contains only the Rust workspace. Rollback remains possible via Git history.
 
 Alpha 12 makes signed remote package downloads retryable and resumable. Partial ZIP bytes are retained across attempts, subsequent requests use HTTP Range, servers that ignore Range restart safely, and a connection-close error is accepted only if the file already reached the signed manifest size before SHA256 verification. Alpha 11's Shell integration migration, Alpha 10's unified entry, Alpha 9's one-minute recovery trigger, and Alpha 8's Windows GUI subsystem behavior remain in place. Closing the manager still leaves the independent background Bridge running. The compatible Linux cloud router remains deployed at Alpha 2.
 
@@ -10,7 +10,7 @@ Do not copy the Alpha EXEs over an existing installation manually. Use the embed
 
 ## Why Rust
 
-The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. The Rust design currently produces several internal Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems. These are roles inside the single Hanako Local Bridge product, not separate products: users receive one installer, one manager entry, one configuration model, one version and one update/repair flow.
+The previous package bundled Node.js, PowerShell/VBS watchdog logic, and a self-contained .NET/Windows App SDK manager. Those implementations were removed in `2.0.0-alpha.22`; the Rust design now produces the Windows runtime executables plus a bootstrap installer and uses the WebView2 runtime already present on supported Windows systems. These are roles inside the single Hanako Local Bridge product, not separate products: users receive one installer, one manager entry, one configuration model, one version and one update/repair flow.
 
 Measured from the rebuilt Windows x64 Alpha 12 release:
 
@@ -245,11 +245,10 @@ The previous Node script and a root-only timestamped backup remain on the server
 
 ## Remaining Production Work
 
-1. Publish the signed Alpha 12 installer and manifest to the separate prerelease channel.
+1. Publish the signed Alpha installer and manifest to the separate prerelease channel.
 2. Verify installation, tray behavior, update, uninstall, and reboot recovery on clean Windows 10 and Windows 11 virtual machines.
 3. Run a staged migration on a non-primary device before offering the Rust installer to the stable fleet.
-4. Keep the Node/PowerShell/VBS/WinUI implementation until stable clients have completed a rollback-capable migration.
-5. Remove legacy code only in a later version-bumped commit after stable telemetry and backups are confirmed.
+4. The legacy Node/PowerShell/VBS/WinUI implementation was removed in alpha.22; if a rollback to the legacy stack is ever needed, restore it from Git history.
 
 ## Release Rule
 

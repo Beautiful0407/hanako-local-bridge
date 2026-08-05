@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.0-alpha.22 - 2026-08-05
+
+- Removes the legacy Node.js / PowerShell / VBS / WinUI implementation. The repository now contains only the Rust workspace; rollback is available via Git history.
+- Open-source preparation: adds Apache-2.0 license, rewrites README, removes personal server addresses and environment identifiers.
+
 ## 2.0.0-alpha.21 - 2026-07-24
 
 - Makes overwrite installs reliable when a bridge is already running in the target directory (which was failing with `timed out waiting for local port 8787 to be released`, most visibly through the new wizard installer, but also on any plain re-run of `HanakoLocalBridge-Setup.exe`). Root cause: `stop_installed_service_and_processes` killed processes by walking sysinfo and matching each process's exe path against the install root, but on Windows sysinfo often cannot read a process's exe path (exiting process, insufficient rights, detached child) and silently skipped it, so the bridge holding the ports was never killed and `wait_for_ports_released` timed out. Now, before the sysinfo sweep, whoever is actually LISTENING on the configured MCP/approval ports is killed by PID (via `netstat -ano` + `taskkill /PID`), which does not depend on reading exe paths and never targets processes by image name (no risk of killing an unrelated bridge). Adds unit coverage for the netstat parser (only LISTENING rows on the target ports, never outbound connections to the same port number).
