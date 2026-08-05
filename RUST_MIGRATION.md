@@ -2,7 +2,7 @@
 
 ## 状态
 
-Rust 实现当前版本为 `2.0.0`。旧版 Node.js / PowerShell / VBS / WinUI 实现已在 alpha.22 移除，仓库现在只包含 Rust 工作区。如需回滚旧实现，可从 Git 历史恢复。
+Rust 实现当前版本为 `2.0.1`。旧版 Node.js / PowerShell / VBS / WinUI 实现已在 alpha.22 移除，仓库现在只包含 Rust 工作区。如需回滚旧实现，可从 Git 历史恢复。
 
 ## 为什么用 Rust
 

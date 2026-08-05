@@ -5,7 +5,7 @@
 ## 组件
 
 ```text
-Windows 本地桥：    2.0.0（Rust）
+Windows 本地桥：    2.0.1（Rust）
 Cloud Hana：        当前兼容部署
 设备路由器：        2.0.0-alpha.2（Rust）
 ```
@@ -52,7 +52,7 @@ http://127.0.0.1:<approvalPort>/manager/
 预期状态：
 
 ```text
-Bridge 版本：2.0.0
+Bridge 版本：2.0.1
 云端状态：active
 后台任务：Running
 ```
