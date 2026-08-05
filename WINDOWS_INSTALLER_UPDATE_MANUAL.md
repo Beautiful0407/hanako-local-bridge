@@ -162,7 +162,7 @@ logs\
 ```text
 MCP：127.0.0.1:8787
 状态页：127.0.0.1:8788
-云端 WebSocket：wss://154-201-69-202.sslip.io/local-bridge/connect
+云端 WebSocket：wss://your-server.example.com/local-bridge/connect
 信任模式：full
 ```
 
@@ -205,8 +205,8 @@ logs\
 ```json
 {
   "device": {
-    "id": "laptop-hl78935t",
-    "name": "LAPTOP-HL78935T"
+    "id": "your-laptop-id",
+    "name": "YOUR-LAPTOP-ID"
   },
   "filesystem": {
     "host": "127.0.0.1",
@@ -221,14 +221,14 @@ logs\
   },
   "cloud": {
     "enabled": true,
-    "url": "wss://154-201-69-202.sslip.io/local-bridge/connect",
+    "url": "wss://your-server.example.com/local-bridge/connect",
     "reconnectMinSeconds": 3,
     "reconnectMaxSeconds": 60,
     "heartbeatSeconds": 25
   },
   "tunnel": {
     "enabled": false,
-    "server": "154.201.69.202",
+    "server": "YOUR_SERVER_IP",
     "user": "root",
     "localPort": 8787,
     "remoteHost": "127.0.0.1",

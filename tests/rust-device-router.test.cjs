@@ -94,7 +94,7 @@ async function run() {
       storage: { dataDir: data, logDir: logs },
       cloud: {
         enabled: false,
-        url: "wss://154-201-69-202.sslip.io/local-bridge/connect",
+        url: "wss://your-server.example.com/local-bridge/connect",
         reconnectMinSeconds: 3,
         reconnectMaxSeconds: 60,
         heartbeatSeconds: 25,

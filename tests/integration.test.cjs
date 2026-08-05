@@ -136,18 +136,18 @@ async function run() {
     const identityPreflight = await fetch(`${approvalBase}/api/client-identity`, {
       method: "OPTIONS",
       headers: {
-        Origin: "https://154-201-69-202.sslip.io",
+        Origin: "https://your-server.example.com",
         "Access-Control-Request-Private-Network": "true",
       },
     });
     assert.equal(identityPreflight.status, 200);
     assert.equal(
       identityPreflight.headers.get("access-control-allow-origin"),
-      "https://154-201-69-202.sslip.io",
+      "https://your-server.example.com",
     );
     assert.equal(identityPreflight.headers.get("access-control-allow-private-network"), "true");
     const clientIdentity = await fetch(`${approvalBase}/api/client-identity`, {
-      headers: { Origin: "https://154-201-69-202.sslip.io" },
+      headers: { Origin: "https://your-server.example.com" },
     }).then((response) => response.json());
     assert.equal(clientIdentity.device.id, "test-device");
     assert.equal(clientIdentity.device.name, "Integration Test Device");

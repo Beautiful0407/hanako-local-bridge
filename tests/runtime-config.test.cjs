@@ -35,7 +35,7 @@ async function run() {
           },
           cloud: {
             enabled: true,
-            url: "ws://154.201.69.202/local-bridge/connect",
+            url: "ws://YOUR_SERVER_IP/local-bridge/connect",
           },
           tunnel: {
             identityFile: "%USERPROFILE%/.ssh/id_ed25519",
@@ -59,10 +59,10 @@ async function run() {
     assert.equal(runtime.config.storage.logDir, path.join(temp, "state", "logs"));
     assert.ok(path.isAbsolute(runtime.config.tunnel.identityFile));
     assert.equal(runtime.config.cloud.enabled, true);
-    assert.equal(runtime.config.cloud.url, "wss://154-201-69-202.sslip.io/local-bridge/connect");
+    assert.equal(runtime.config.cloud.url, "wss://your-server.example.com/local-bridge/connect");
     assert.equal(
       runtime.config.update.manifest,
-      "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json",
+      "https://your-server.example.com/local-bridge/releases/update-manifest.json",
     );
     assert.equal(runtime.config.tunnel.enabled, false);
 

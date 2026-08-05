@@ -464,7 +464,7 @@
                             <TextBox
                                 x:Name="CloudBaseUrlBox"
                                 Header="Hana 网页地址"
-                                PlaceholderText="https://154-201-69-202.sslip.io" />
+                                PlaceholderText="https://your-server.example.com" />
                             <PasswordBox
                                 x:Name="AccessKeyBox"
                                 Grid.Column="1"

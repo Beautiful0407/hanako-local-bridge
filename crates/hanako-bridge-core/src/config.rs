@@ -10,13 +10,13 @@ use serde_json::{Map, Value};
 
 use crate::{BridgeError, BridgeResult, device::clean_device_id};
 
-pub const OFFICIAL_CLOUD_URL: &str = "wss://154-201-69-202.sslip.io/local-bridge/connect";
-pub const LEGACY_CLOUD_URL: &str = "ws://154.201.69.202/local-bridge/connect";
+pub const OFFICIAL_CLOUD_URL: &str = "wss://your-server.example.com/local-bridge/connect";
+pub const LEGACY_CLOUD_URL: &str = "ws://YOUR_SERVER_IP/local-bridge/connect";
 pub const OFFICIAL_UPDATE_MANIFEST: &str =
-    "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json";
+    "https://your-server.example.com/local-bridge/releases/update-manifest.json";
 pub const OFFICIAL_ALPHA_UPDATE_MANIFEST: &str =
-    "https://154-201-69-202.sslip.io/local-bridge/releases/alpha/update-manifest.json";
-pub const OFFICIAL_CLAIM_URL: &str = "https://154-201-69-202.sslip.io/desktop/";
+    "https://your-server.example.com/local-bridge/releases/alpha/update-manifest.json";
+pub const OFFICIAL_CLAIM_URL: &str = "https://your-server.example.com/desktop/";
 
 /// Derives the browser claim page URL from the cloud WebSocket URL.
 ///
@@ -259,7 +259,7 @@ impl BridgeConfig {
             },
             tunnel: TunnelConfig {
                 enabled: false,
-                server: "154.201.69.202".to_string(),
+                server: "YOUR_SERVER_IP".to_string(),
                 user: "root".to_string(),
                 local_host: "127.0.0.1".to_string(),
                 local_port: 8787,
@@ -403,7 +403,7 @@ fn apply_legacy_migrations(value: &mut Value, source: &Value) {
             .and_then(Value::as_str)
             .unwrap_or("")
             .trim();
-        let cloud_url = if !server.is_empty() && server != "154.201.69.202" {
+        let cloud_url = if !server.is_empty() && server != "YOUR_SERVER_IP" {
             format!("ws://{server}/local-bridge/connect")
         } else {
             OFFICIAL_CLOUD_URL.to_string()
@@ -583,15 +583,15 @@ mod tests {
     fn claim_url_is_derived_from_the_cloud_host() {
         assert_eq!(
             claim_url_from_cloud(OFFICIAL_CLOUD_URL),
-            "https://154-201-69-202.sslip.io/desktop/"
+            "https://your-server.example.com/desktop/"
         );
         assert_eq!(
             claim_url_from_cloud("wss://cloud.example.test/local-bridge/connect"),
             "https://cloud.example.test/desktop/"
         );
         assert_eq!(
-            claim_url_from_cloud("ws://192.168.1.5:8080/local-bridge/connect"),
-            "http://192.168.1.5:8080/desktop/"
+            claim_url_from_cloud("ws://192.168.1.100:8080/local-bridge/connect"),
+            "http://192.168.1.100:8080/desktop/"
         );
     }
 

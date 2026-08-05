@@ -60,9 +60,9 @@ Rust Alpha 的完整构建、测试、数据兼容和迁移边界见 `RUST_MIGRA
 
 `server.cjs` 的 `/mcp` 只接受 loopback Host、拒绝浏览器 Origin，并要求 `Authorization: Bearer <data\approval-token.txt>`。MCP 和审批接口请求体上限为 1 MiB。
 
-官方云端地址为 `wss://154-201-69-202.sslip.io/local-bridge/connect`。Nginx 使用公开证书代理到 `127.0.0.1:14500`，Certbot 定时任务负责续期。
+官方云端地址为 `wss://your-server.example.com/local-bridge/connect`。Nginx 使用公开证书代理到 `127.0.0.1:14500`，Certbot 定时任务负责续期。
 
-远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。稳定版更新清单和 ZIP 由 `https://154-201-69-202.sslip.io/local-bridge/releases/` 提供，Alpha 清单和 ZIP 位于其 `alpha/` 子目录；源码仓库保持私有也不会影响客户端更新。
+远程更新清单使用 `update-signature.ps1` 生成和验证 RSA-SHA256 签名。生产私钥只保存在 `%USERPROFILE%\.hanako-update-signing\private-key.xml`；仓库、ZIP 和安装目录只包含 `update-public-key.xml`。稳定版更新清单和 ZIP 由 `https://your-server.example.com/local-bridge/releases/` 提供，Alpha 清单和 ZIP 位于其 `alpha/` 子目录；源码仓库保持私有也不会影响客户端更新。
 
 配置保存只替换第一个读写根目录，并保留其他根目录。WinUI 管理器窗口尺寸限制在当前 Windows 工作区以内。
 
@@ -668,7 +668,7 @@ read_write 必须额外包含写操作词
 {
   "id": "Documents",
   "name": "Documents",
-  "path": "C:\\Users\\30456\\Documents",
+  "path": "C:\\Users\\<YourName>\\Documents",
   "mode": "read_write",
   "enabled": true,
   "source": "local_approval"
@@ -984,7 +984,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\status.ps1
 
 ```text
 计划任务均为 Running
-Windows 8787 health 返回 v0.7.0，device.id=laptop-hl78935t
+Windows 8787 health 返回 v0.7.0，device.id=your-laptop-id
 Windows 8788 approval health 返回 200
 VPS 127.0.0.1:18787 可以访问设备桥 v0.7.0
 VPS 127.0.0.1:18786 可以访问设备路由器 v0.7.0
@@ -1003,7 +1003,7 @@ VPS 在临时授权目录创建并读回文件成功
 测试后已撤销临时 grant 并清理目录
 云端模型调用 mcp_local_fs_local_exec_runtimes 成功检测本机运行时
 云端模型调用 mcp_local_fs_local_exec_execute 成功执行 PowerShell
-执行发生在 LAPTOP-HL78935T 的用户 30456 下
+执行发生在 YOUR-LAPTOP-ID 的用户 YOUR_WINDOWS_USER 下
 PowerShell exitCode=0，stdout 成功返回云端
 ```
 

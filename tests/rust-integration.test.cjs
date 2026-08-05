@@ -107,7 +107,7 @@ async function run() {
         storage: { dataDir: data, logDir: logs },
         cloud: {
           enabled: false,
-          url: "wss://154-201-69-202.sslip.io/local-bridge/connect",
+          url: "wss://your-server.example.com/local-bridge/connect",
           reconnectMinSeconds: 3,
           reconnectMaxSeconds: 60,
           heartbeatSeconds: 25,
@@ -310,7 +310,7 @@ async function run() {
       {
         method: "OPTIONS",
         headers: {
-          Origin: "https://154-201-69-202.sslip.io",
+          Origin: "https://your-server.example.com",
           "Access-Control-Request-Private-Network": "true",
         },
       },

@@ -17,7 +17,7 @@ The Windows bridge actively connects to the cloud:
 
 ```text
 Windows Local Bridge
-  -> wss://154-201-69-202.sslip.io/local-bridge/connect
+  -> wss://your-server.example.com/local-bridge/connect
   -> Cloud Hana LocalBridgeGateway
   -> Device Router on 127.0.0.1:18786
   -> local_fs / local_exec / local_device tools

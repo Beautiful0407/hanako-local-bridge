@@ -79,7 +79,7 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
 本地桥现在主动连接：
 
 ```text
-wss://154-201-69-202.sslip.io/local-bridge/connect
+wss://your-server.example.com/local-bridge/connect
 ```
 
 不再需要：
@@ -95,7 +95,7 @@ wss://154-201-69-202.sslip.io/local-bridge/connect
 首次连接：
 
 1. 安装并启动本地桥。
-2. 在同一台电脑打开 `https://154-201-69-202.sslip.io/desktop/`。
+2. 在同一台电脑打开 `https://your-server.example.com/desktop/`。
 3. 输入 Hana 网页访问密钥登录。
 4. 网页自动读取本机身份并完成认领。
 5. 检查本地状态中的 `cloud.status` 是否变为 `active`。
@@ -126,7 +126,7 @@ cloud.claimToken: 空
 
 ```text
 正式安装版本：1.2.0
-设备：laptop-hl78935t
+设备：your-laptop-id
 Cloud status：active
 Device Router：0.8.1 / online
 Cloud Hana：0.401.11
@@ -162,7 +162,7 @@ Device Router 恢复 online：3.0 秒
 
 ```text
 Trigger：MSFT_TaskLogonTrigger
-User：LAPTOP-HL78935T\30456
+User：YOUR-LAPTOP-ID\YOUR_WINDOWS_USER
 Launcher：隐藏 wscript.exe
 ```
 
@@ -200,10 +200,10 @@ LOCAL_AGENT_TRUST_MODE=full
 使用时直接把绝对路径告诉 Hana Agent，不需要附加“我授权你”，也不需要打开审批页：
 
 ```text
-读取 C:\Users\30456\Documents
+读取 C:\Users\<YourName>\Documents
 读取 D:\OH-WorkSpace
-在 C:\Users\30456\Desktop\ 创建一个文件
-执行 C:\Users\30456\Scripts\backup.ps1
+在 C:\Users\<YourName>\Desktop\ 创建一个文件
+执行 C:\Users\<YourName>\Scripts\backup.ps1
 ```
 
 当前能力状态：
@@ -230,7 +230,7 @@ local_fs.access_status: disabled
 Bridge version: 1.4.1
 Windows MCP:    http://127.0.0.1:8787/mcp
 Approval UI:   http://127.0.0.1:8788/
-Cloud WebSocket: wss://154-201-69-202.sslip.io/local-bridge/connect
+Cloud WebSocket: wss://your-server.example.com/local-bridge/connect
 Device Router: http://127.0.0.1:18786/mcp
 ```
 
@@ -238,7 +238,7 @@ Device Router: http://127.0.0.1:18786/mcp
 
 `v0.7.1` 支持可选离线队列。调用设备工具时传入 `queueIfOffline: true`，目标电脑离线则保存到 VPS，重新上线后自动执行。
 
-`v0.7.0` 增加设备身份和云端设备路由。当前设备 ID 为 `laptop-hl78935t`，既可以继续使用 `C:\...`，也可以使用 `device://laptop-hl78935t/C:/...`。多台电脑时使用 `local_device.devices` 查看在线状态并选择设备。
+`v0.7.0` 增加设备身份和云端设备路由。当前设备 ID 为 `your-laptop-id`，既可以继续使用 `C:\...`，也可以使用 `device://your-laptop-id/C:/...`。多台电脑时使用 `local_device.devices` 查看在线状态并选择设备。
 
 `v0.6.1` 为目录列表增加 `limit/cursor/nextCursor`，为搜索增加 glob、排除规则、超时和访问节点预算，并新增文件监听与长轮询事件读取。
 
@@ -252,11 +252,11 @@ Device Router: http://127.0.0.1:18786/mcp
 
 ```text
 local://OH-WorkSpace
-C:\Users\30456\Desktop\OH-WorkSpace
+C:\Users\<YourName>\Desktop\OH-WorkSpace
 mode: read_write
 
 local://Hanako-Local-FS-MCP-Bridge
-C:\Users\30456\Desktop\Hanako-Local-FS-MCP-Bridge
+C:\Users\<YourName>\Desktop\Hanako-Local-FS-MCP-Bridge
 mode: read
 ```
 
@@ -280,7 +280,7 @@ MCP 服务退出后 3 秒自动重启。SSH 隧道断开后按 5 到 60 秒指�
 重新安装：
 
 ```powershell
-cd C:\Users\30456\Desktop\Hanako-Local-FS-MCP-Bridge
+cd C:\Users\<YourName>\Desktop\Hanako-Local-FS-MCP-Bridge
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install-background-service.ps1
 ```
 
@@ -323,13 +323,13 @@ local_fs.request_access
 只读示例：
 
 ```text
-我授权你读取 C:\Users\30456\Documents
+我授权你读取 C:\Users\<YourName>\Documents
 ```
 
 读写示例：
 
 ```text
-我授权你读写 C:\Users\30456\Documents，你可以创建和修改文件
+我授权你读写 C:\Users\<YourName>\Documents，你可以创建和修改文件
 ```
 
 聊天授权规则：
@@ -359,7 +359,7 @@ local_fs.request_access
 
 ```json
 {
-  "path": "C:\\Users\\30456\\Documents",
+  "path": "C:\\Users\\<YourName>\\Documents",
   "mode": "read_write",
   "name": "Documents",
   "reason": "需要整理文档"
@@ -407,7 +407,7 @@ local_exec.execute
 示例：
 
 ```text
-我授权你执行 C:\Users\30456\Documents\Scripts\backup.ps1
+我授权你执行 C:\Users\<YourName>\Documents\Scripts\backup.ps1
 ```
 
 带参数示例：
@@ -473,7 +473,7 @@ local_exec.runtimes
 
 ```text
 云端模型调用 mcp_local_fs_local_exec_execute
-Windows 电脑 LAPTOP-HL78935T 以用户 30456 执行 PowerShell
+Windows 电脑 YOUR-LAPTOP-ID 以用户 YOUR_WINDOWS_USER 执行 PowerShell
 退出码为 0，stdout 成功返回云端
 云端模型调用 mcp_local_fs_local_fs_write_text 创建 Windows 文件
 云端模型调用 mcp_local_fs_local_fs_read_text 读回完全相同的内容
@@ -687,7 +687,7 @@ SSH 隧道失败：
 ```powershell
 Get-Content .\logs\ssh-tunnel.err.log -Tail 100
 Get-Content .\logs\ssh-tunnel-watchdog.log -Tail 100
-ssh -o BatchMode=yes root@154.201.69.202 "echo KEY_OK"
+ssh -o BatchMode=yes root@YOUR_SERVER_IP "echo KEY_OK"
 ```
 
 计划任务状态：

@@ -235,9 +235,9 @@ Live verification on July 19, 2026 confirmed:
 ```text
 router version: 2.0.0-alpha.2
 tools: 34
-online devices: laptop-hl78935t, 5cd5469l5j
+online devices: your-laptop-id, 5cd5469l5j
 local_device.devices: success
-local_fs.roots routed to laptop-hl78935t: success
+local_fs.roots routed to your-laptop-id: success
 Hana web entry: HTTP 200 and connected UI
 ```
 

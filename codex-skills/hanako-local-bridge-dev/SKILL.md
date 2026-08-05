@@ -1,6 +1,6 @@
 ---
 name: hanako-local-bridge-dev
-description: "开发和维护 Beautiful0407/hanako--MCP- 的 Hanako Local Bridge MCP。用于继续开发本地文件读写、图片读取、PowerShell/Python 执行、Windows Rust Bridge、WebView2 托盘管理器、签名更新器、内嵌安装器、云端 WebSocket、Linux Device Router、多设备路由、自动恢复和在线更新；也用于诊断本地 MCP 不可用、窗口弹出、托盘异常、设备离线、更新失败、安装覆盖失败，执行测试、打包、GitHub Release、VPS Alpha feed 发布、回滚和开发文档维护。触发词包括：继续开发文件桥、修改 MCP、修复 Hanako Local Bridge、增加本地工具、打包安装器、发布新版、在线更新、云端设备路由、维护开发手册。"
+description: "开发和维护 Beautiful0407/hanako-local-bridge 的 Hanako Local Bridge MCP。用于继续开发本地文件读写、图片读取、PowerShell/Python 执行、Windows Rust Bridge、WebView2 托盘管理器、签名更新器、内嵌安装器、云端 WebSocket、Linux Device Router、多设备路由、自动恢复和在线更新；也用于诊断本地 MCP 不可用、窗口弹出、托盘异常、设备离线、更新失败、安装覆盖失败，执行测试、打包、GitHub Release、VPS Alpha feed 发布、回滚和开发文档维护。触发词包括：继续开发文件桥、修改 MCP、修复 Hanako Local Bridge、增加本地工具、打包安装器、发布新版、在线更新、云端设备路由、维护开发手册。"
 ---
 
 # Hanako Local Bridge Development
@@ -13,7 +13,7 @@ description: "开发和维护 Beautiful0407/hanako--MCP- 的 Hanako Local Bridge
 默认仓库：
 
 ```text
-C:\Users\30456\Documents\hanako 开发\hanako-mcp-publish-20260717
+C:\Users\<YourName>\Documents\hanako 开发\hanako-mcp-publish-20260717
 ```
 
 仓库源码中的 Skill：
@@ -25,7 +25,7 @@ codex-skills\hanako-local-bridge-dev
 本机安装副本：
 
 ```text
-C:\Users\30456\.codex\skills\hanako-local-bridge-dev
+C:\Users\<YourName>\.codex\skills\hanako-local-bridge-dev
 ```
 
 不要把本 Skill 放进 HanaAgent 的 `skills2set/`，也不要上传到 VPS 的

@@ -29,7 +29,7 @@ Assert-Manager ($managerServiceSource.Contains('RunAsync<UpdateLaunchResult>')) 
 Assert-Manager ($managerServiceSource.Contains('"update-result"')) "Manager cannot consume the final update result."
 
 Assert-Manager `
-  ((ConvertTo-HanakoCloudWebBase "wss://154-201-69-202.sslip.io/local-bridge/connect") -eq "https://154-201-69-202.sslip.io") `
+  ((ConvertTo-HanakoCloudWebBase "wss://your-server.example.com/local-bridge/connect") -eq "https://your-server.example.com") `
   "WebSocket URL conversion failed."
 Assert-Manager `
   ((ConvertTo-HanakoCloudWebBase "https://example.test/desktop/?x=1") -eq "https://example.test") `

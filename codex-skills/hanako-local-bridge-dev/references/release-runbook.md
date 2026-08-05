@@ -210,7 +210,7 @@ gh release create "v$version" `
   (Join-Path $out $package) `
   (Join-Path $out $installer) `
   (Join-Path $out 'update-manifest.json') `
-  --repo Beautiful0407/hanako--MCP- `
+  --repo Beautiful0407/hanako-local-bridge `
   --title "Hanako Local Bridge $version" `
   --prerelease `
   --notes "<tested release notes>"
@@ -224,7 +224,7 @@ returned a URL.
 First prove the host:
 
 ```powershell
-ssh -o BatchMode=yes -o ConnectTimeout=10 root@154.201.69.202 `
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@YOUR_SERVER_IP `
   "hostname; whoami; systemctl is-active hanako-server.service"
 ```
 

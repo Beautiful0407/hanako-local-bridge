@@ -22,9 +22,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "bridge-common.ps1")
-$officialCloudUrl = "wss://154-201-69-202.sslip.io/local-bridge/connect"
-$legacyCloudUrl = "ws://154.201.69.202/local-bridge/connect"
-$officialUpdateManifest = "https://154-201-69-202.sslip.io/local-bridge/releases/update-manifest.json"
+$officialCloudUrl = "wss://your-server.example.com/local-bridge/connect"
+$legacyCloudUrl = "ws://YOUR_SERVER_IP/local-bridge/connect"
+$officialUpdateManifest = "https://your-server.example.com/local-bridge/releases/update-manifest.json"
 
 function Read-BridgeValue {
   param(
