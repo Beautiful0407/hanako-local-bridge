@@ -545,6 +545,9 @@ fn maintenance_json(executable: &Path, arguments: &[std::ffi::OsString]) -> anyh
 }
 
 fn is_inside(path: &Path, root: &Path) -> bool {
+    let Ok(path) = hanako_bridge_core::path::normalize_absolute_local(path) else {
+        return false;
+    };
     let path = path
         .to_string_lossy()
         .replace('/', "\\")

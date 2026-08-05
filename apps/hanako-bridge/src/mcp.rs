@@ -784,7 +784,7 @@ async fn list_directory(state: &AppState, arguments: &Value) -> Result<Value, Br
     let start = if cursor.is_empty() {
         0
     } else {
-        names.partition_point(|name| name.as_str() <= cursor)
+        names.partition_point(|name| name.to_ascii_lowercase() <= cursor.to_ascii_lowercase())
     };
     let selected = &names[start..names.len().min(start + limit)];
     let mut entries = Vec::with_capacity(selected.len());
@@ -910,14 +910,8 @@ async fn read_lines(state: &AppState, arguments: &Value) -> Result<Value, Bridge
         "lf"
     };
     let trimmed = decoded.text.trim_end_matches(['\r', '\n']);
-    let lines: Vec<&str> = if trimmed.is_empty() {
-        Vec::new()
-    } else {
-        trimmed
-            .split(['\r', '\n'])
-            .filter(|line| !line.is_empty())
-            .collect()
-    };
+    // `lines()` 保留内部空行(行号必须连续),并正确处理 CRLF;空串返回空迭代器。
+    let lines: Vec<&str> = trimmed.lines().collect();
     let start_line = arguments
         .get("startLine")
         .and_then(Value::as_u64)
@@ -1571,10 +1565,32 @@ async fn copy_or_move(
     let destination = state
         .resolver
         .resolve(destination_input, AccessMode::ReadWrite, true)?;
-    let (_source_guard, _destination_guard) = tokio::join!(
-        state.lock_path(&source.real),
-        state.lock_path(&destination.real)
-    );
+    let source_key = source
+        .real
+        .to_string_lossy()
+        .replace('/', "\\")
+        .to_ascii_lowercase();
+    let destination_key = destination
+        .real
+        .to_string_lossy()
+        .replace('/', "\\")
+        .to_ascii_lowercase();
+    if source_key == destination_key {
+        return Err(BridgeError::tool(
+            "destination_exists",
+            "destination already exists",
+        ));
+    }
+    // 固定锁获取顺序,避免并发 copy/move(X→Y 与 Y→X)互相持锁等待形成死锁。
+    let (_source_guard, _destination_guard) = if source_key <= destination_key {
+        let source_guard = state.lock_path(&source.real).await;
+        let destination_guard = state.lock_path(&destination.real).await;
+        (source_guard, destination_guard)
+    } else {
+        let destination_guard = state.lock_path(&destination.real).await;
+        let source_guard = state.lock_path(&source.real).await;
+        (source_guard, destination_guard)
+    };
     if destination.real.exists() {
         return Err(BridgeError::tool(
             "destination_exists",

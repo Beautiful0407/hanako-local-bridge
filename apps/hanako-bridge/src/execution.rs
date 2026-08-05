@@ -1653,6 +1653,9 @@ fn paths_equal(left: &Path, right: &Path) -> bool {
 }
 
 fn is_inside(path: &Path, root: &Path) -> bool {
+    let Ok(path) = hanako_bridge_core::path::normalize_absolute_local(path) else {
+        return false;
+    };
     let path = path
         .to_string_lossy()
         .replace('/', "\\")

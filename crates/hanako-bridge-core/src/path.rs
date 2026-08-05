@@ -51,8 +51,14 @@ fn normalize_for_compare(path: &Path) -> String {
 }
 
 fn is_inside(path: &Path, root: &Path) -> bool {
-    let path = normalize_for_compare(path);
-    let root = normalize_for_compare(root);
+    let Ok(path) = normalize_absolute_local(path) else {
+        return false;
+    };
+    let Ok(root) = normalize_absolute_local(root) else {
+        return false;
+    };
+    let path = normalize_for_compare(&path);
+    let root = normalize_for_compare(&root);
     path == root || path.starts_with(&(root + "\\"))
 }
 
@@ -123,6 +129,33 @@ fn validate_absolute_local_path(path: &Path) -> BridgeResult<()> {
         ));
     }
     Ok(())
+}
+
+/// 规范化绝对 Windows 本地路径:消费 `.`/`..` 组件,阻止逃逸盘根。
+///
+/// Windows 文件 API 会真实解析 `..`,而字符串前缀比较不会,因此任何基于
+/// 前缀的授权判断必须先经过本函数,否则 `C:\root\..\..\secret` 一类输入
+/// 会绕过授权根目录检查。
+pub fn normalize_absolute_local(path: &Path) -> BridgeResult<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::Normal(value) => normalized.push(value),
+            Component::ParentDir => {
+                // 盘根(如 `C:\`)上的 `..` 是根目录自身,忽略即可;
+                // 空路径上的 `..` 才视为逃逸,拒绝。
+                if !normalized.pop() && !normalized.has_root() {
+                    return Err(BridgeError::tool(
+                        "invalid_local_path",
+                        "path escapes the drive root",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(normalized)
 }
 
 fn normalize_relative(path: &Path) -> BridgeResult<PathBuf> {
@@ -249,6 +282,7 @@ impl PathResolver {
 
         let absolute = PathBuf::from(normalized);
         validate_absolute_local_path(&absolute)?;
+        let absolute = normalize_absolute_local(&absolute)?;
         if self.full_trust {
             let root = PathBuf::from(format!(
                 "{}\\",
@@ -361,5 +395,51 @@ mod tests {
                 .resolve("local://Root/../../escape.txt", AccessMode::Read, true)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn blocks_parent_escape_in_absolute_paths() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let resolver = PathResolver::new(
+            &[RootConfig {
+                name: "Root".to_string(),
+                path: root.clone(),
+                mode: RootMode::ReadWrite,
+            }],
+            false,
+            "test-device",
+            Vec::new(),
+        );
+
+        // `..` 逃逸授权根必须被拒绝,即使字符串前缀看起来在根内。
+        let escape = format!("{}\\..\\..\\Windows\\System32\\config\\SAM", root.display());
+        assert!(
+            resolver.resolve(&escape, AccessMode::Read, true).is_err(),
+            "absolute path with .. must not escape the authorized root"
+        );
+
+        // 根内路径带 `..` 应规范化为真实路径。
+        let inside = format!("{}\\child\\..\\note.txt", root.display());
+        let resolved = resolver
+            .resolve(&inside, AccessMode::ReadWrite, true)
+            .unwrap();
+        assert_eq!(resolved.real, root.join("note.txt"));
+    }
+
+    #[test]
+    fn normalize_absolute_local_consumes_dot_dot() {
+        let normalized = normalize_absolute_local(Path::new(r"C:\data\..\secret.txt")).unwrap();
+        assert_eq!(normalized, PathBuf::from(r"C:\secret.txt"));
+
+        let normalized = normalize_absolute_local(Path::new(r"C:\data\child\..\..\x.txt")).unwrap();
+        assert_eq!(normalized, PathBuf::from(r"C:\x.txt"));
+
+        // 根目录的 `..` 即根目录自身,规范化后不逃逸。
+        let normalized = normalize_absolute_local(Path::new(r"C:\..\secret.txt")).unwrap();
+        assert_eq!(normalized, PathBuf::from(r"C:\secret.txt"));
+
+        // 盘符相对路径(C:xxx)不属于绝对路径,由调用方在 validate 层拦截。
+        let _ = normalize_absolute_local(Path::new(r"C:relative.txt")).unwrap();
     }
 }

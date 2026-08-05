@@ -435,12 +435,18 @@ fn task_xml(
     task_name: &str,
     user: &str,
     executable: &Path,
-    _config_path: &Path,
+    config_path: &Path,
     restart_delay_seconds: u64,
 ) -> String {
     let description = format!("Hanako Local Bridge Rust service: {task_name}");
     let restart_minutes = restart_delay_seconds.saturating_add(59).max(60) / 60;
     let watchdog_start = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z");
+    let mut service_arguments = vec!["--service".to_string()];
+    if !config_path.as_os_str().is_empty() {
+        service_arguments.push("--service-config".to_string());
+        service_arguments.push(xml_quoted_argument(&config_path.to_string_lossy()));
+    }
+    let service_arguments = service_arguments.join(" ");
     format!(
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -494,7 +500,7 @@ fn task_xml(
   <Actions Context="Author">
     <Exec>
       <Command>{}</Command>
-      <Arguments>--service</Arguments>
+      <Arguments>{}</Arguments>
       <WorkingDirectory>{}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -507,6 +513,7 @@ fn task_xml(
         xml_escape(user),
         restart_minutes,
         xml_escape(executable.to_string_lossy().as_ref()),
+        xml_escape(&service_arguments),
         xml_escape(
             executable
                 .parent()

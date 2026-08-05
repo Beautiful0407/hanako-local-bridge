@@ -196,7 +196,17 @@ impl RouterService {
             "unsupported device router config schema"
         );
         let tool_cache = read_optional_json(&paths.cache)?.unwrap_or_default();
-        let queue = read_optional_json(&paths.queue)?.unwrap_or_default();
+        let mut queue: QueueStore = read_optional_json(&paths.queue)?.unwrap_or_default();
+        // 路由器若在条目处于 running 时崩溃/重启,该条目永远不会被 process_queue
+        // 再次处理(它只派发 queued)。把遗留的 running 重置为 queued,让排队调用
+        // 在重启后继续执行;attempts 保留,供观察重试次数。
+        for item in queue.items.iter_mut() {
+            if item.status == "running" {
+                item.status = "queued".to_string();
+                item.started_at = None;
+                item.updated_at = Utc::now().to_rfc3339();
+            }
+        }
         let client = Client::builder().timeout(Duration::from_secs(35)).build()?;
         Ok(Self {
             paths,

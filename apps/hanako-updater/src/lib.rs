@@ -1584,7 +1584,10 @@ Active Connections
         let pids = parse_netstat_listening_pids(sample, &[8787, 8788]);
         assert_eq!(pids, vec![15844]);
         assert!(!pids.contains(&4242), "unrelated port 9999 must be ignored");
-        assert!(!pids.contains(&7777), "outbound client to 8787 must not match");
+        assert!(
+            !pids.contains(&7777),
+            "outbound client to 8787 must not match"
+        );
         assert!(!pids.contains(&8888), "ESTABLISHED on 8788 must not match");
     }
 
