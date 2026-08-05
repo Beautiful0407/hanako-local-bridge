@@ -413,9 +413,9 @@ fn bounded_contains(haystack: &str, needle: &str) -> bool {
 
 /// 匹配位置前一个字符是否属于路径延续。
 ///
-/// ASCII 用延续字符集;非 ASCII(如中文动词"授权C:\data"中紧贴路径的
-/// 汉字)不视为延续——路径以盘符开头,前面的字符不可能构成更长路径名,
-/// 把它们当边界可避免中文聊天原话无空格紧贴路径时被误拒。
+/// ASCII 用延续字符集(不含括号,括号包裹路径如 "(C:\data)" 是常见
+/// 聊天表达);非 ASCII(如中文动词"授权C:\data"中紧贴路径的汉字)
+/// 不视为延续——路径以盘符开头,前面的字符不可能构成更长路径名。
 fn is_path_continuation_before(bytes: &[u8], index: usize) -> bool {
     let byte = bytes[index - 1];
     if byte.is_ascii() {
@@ -427,13 +427,14 @@ fn is_path_continuation_before(bytes: &[u8], index: usize) -> bool {
 
 /// 匹配位置后一个字符是否属于路径延续。
 ///
-/// ASCII 用延续字符集;非 ASCII 按 UTF-8 解码:汉字等 alphanumeric 字符
-/// 视为文件名延续(`C:\资料库` 不匹配 `C:\资料`),中文标点(。、等)视为
-/// 边界,避免 "允许访问 C:\资料。" 这类自然表达被误拒。
+/// 与 before 不同,after 侧 `(` 视为延续,拒绝 "C:\data(1)" 这类
+/// 常见命名被 `C:\data` 误匹配;`)` 保持边界("允许(C:\data)" 合法)。
+/// 非 ASCII 按 UTF-8 解码:汉字等 alphanumeric 视为文件名延续,
+/// 中文标点(。、)视为边界。
 fn is_path_continuation_after(bytes: &[u8], end: usize) -> bool {
     let byte = bytes[end];
     if byte.is_ascii() {
-        is_ascii_continuation(byte)
+        is_ascii_continuation(byte) || byte == b'('
     } else {
         std::str::from_utf8(&bytes[end..])
             .ok()
@@ -454,8 +455,6 @@ fn is_ascii_continuation(byte: u8) -> bool {
             | b'$'
             | b'%'
             | b'~'
-            | b'('
-            | b')'
     )
 }
 
@@ -546,6 +545,14 @@ mod tests {
         assert!(quote_contains_path("允许访问 C:\\资料。", r"C:\资料"));
         assert!(quote_contains_path("授权C:\\data 目录", r"C:\data"));
         assert!(quote_contains_path("允许C:\\资料", r"C:\资料"));
+        // 括号包裹路径不再误拒(最终 review 修复)。
+        assert!(quote_contains_path("允许访问(C:\\data 目录)", r"C:\data"));
+        assert!(quote_contains_path("允许(C:\\data)", r"C:\data"));
+        // 但 after 侧括号仍是延续:C:\data(1) 不被 C:\data 误匹配。
+        assert!(!quote_contains_path(
+            "允许访问 C:\\data(1) 目录",
+            r"C:\data"
+        ));
         // 相邻目录名不再误匹配(旧 contains 行为会误匹配)。
         assert!(!quote_contains_path(
             "我允许访问 C:\\data2 目录",
