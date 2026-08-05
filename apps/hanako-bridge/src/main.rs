@@ -62,7 +62,8 @@ fn env_bool(name: &str, fallback: bool) -> bool {
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let pending_requests = state.access.pending_count().await;
     let pending_executions = state.execution.pending_count().await;
-    let cloud_identity = state.cloud_identity().await;
+    // 健康检查无认证,使用脱敏身份:绝不返回 claimToken(设备认领交接凭据)。
+    let cloud_identity = state.cloud_identity_public().await;
     (
         StatusCode::OK,
         axum::Json(json!({

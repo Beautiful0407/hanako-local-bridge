@@ -126,6 +126,18 @@ impl CloudConnector {
         })
     }
 
+    /// 与 [`client_identity`] 相同,但绝不返回 `claimToken`。
+    ///
+    /// `claimToken` 是设备认领的交接凭据,只能提供给受认证的端点(如
+    /// 本机浏览器认领页);无认证的健康检查端点必须使用本方法。
+    pub async fn client_identity_public(&self) -> Value {
+        let mut identity = self.client_identity().await;
+        if let Some(object) = identity.as_object_mut() {
+            object.insert("claimToken".to_string(), Value::Null);
+        }
+        identity
+    }
+
     async fn run(self: Arc<Self>) {
         let mut retry_seconds = self.config.reconnect_min_seconds.max(2);
         let mut connect_count: u64 = 0;

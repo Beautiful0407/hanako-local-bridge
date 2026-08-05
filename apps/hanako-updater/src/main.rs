@@ -167,6 +167,21 @@ fn run_worker(arguments: &[std::ffi::OsString]) -> anyhow::Result<()> {
             "\n=== Rust update {attempt_id} started {started_at}; expected {expected_version} ===\n"
         ),
     )?;
+    // 上一次更新若在事务中途被强杀(断电/杀进程),状态文件会停留在 running。
+    // 在覆盖状态前记录中断痕迹,便于诊断"永久更新中"的现场。
+    if let Ok(bytes) = fs::read(&state_path)
+        && let Ok(previous) = serde_json::from_slice::<UpdateState>(&bytes)
+        && previous.status == "running"
+        && previous.attempt_id != attempt_id
+    {
+        append_log(
+            &log_path,
+            &format!(
+                "previous update attempt {} was interrupted (state left as running)\n",
+                previous.attempt_id
+            ),
+        )?;
+    }
     let mut state = UpdateState {
         schema_version: 1,
         attempt_id: attempt_id.clone(),

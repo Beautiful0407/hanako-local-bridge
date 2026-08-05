@@ -380,11 +380,19 @@ impl AccessController {
         request.status = "approved".to_string();
         request.decided_at = Some(Utc::now().to_rfc3339());
         request.grant_id = Some(grant.id.clone());
+        let audit_event = json!({
+            "action": "access_approved",
+            "requestId": &request.id,
+            "path": &request.path,
+            "mode": request.mode,
+            "grantId": &grant.id
+        });
         write_json_atomic(&self.request_file, &*requests)?;
         drop(requests);
         self.grants.lock().await.grants.push(grant.clone());
         self.save_grants().await?;
         self.refresh_resolver().await;
+        self.audit(audit_event).await;
         Ok(grant)
     }
 
@@ -403,8 +411,16 @@ impl AccessController {
         }
         request.status = "denied".to_string();
         request.decided_at = Some(Utc::now().to_rfc3339());
+        let audit_event = json!({
+            "action": "access_denied",
+            "requestId": &request.id,
+            "path": &request.path,
+            "mode": request.mode
+        });
         let result = request.clone();
         write_json_atomic(&self.request_file, &*requests)?;
+        drop(requests);
+        self.audit(audit_event).await;
         Ok(result)
     }
 
@@ -423,10 +439,17 @@ impl AccessController {
         }
         grant.enabled = false;
         grant.updated_at = Utc::now().to_rfc3339();
+        let audit_event = json!({
+            "action": "access_revoked",
+            "grantId": &grant.id,
+            "path": &grant.path,
+            "mode": grant.mode
+        });
         let result = grant.clone();
         write_json_atomic(&self.grant_file, &*grants)?;
         drop(grants);
         self.refresh_resolver().await;
+        self.audit(audit_event).await;
         Ok(result)
     }
 
@@ -544,11 +567,15 @@ fn grant_active(grant: &AccessGrant) -> bool {
     if !grant.enabled {
         return false;
     }
-    grant
-        .expires_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .is_none_or(|expires| expires > Utc::now())
+    match grant.expires_at.as_deref() {
+        // 未设置过期时间:长期有效。
+        None => true,
+        // 已设置但解析失败:数据异常时 fail-closed,视为已过期,
+        // 而不是永久有效。
+        Some(value) => DateTime::parse_from_rfc3339(value)
+            .map(|expires| expires > Utc::now())
+            .unwrap_or(false),
+    }
 }
 
 fn clean_name(value: &str) -> String {
@@ -642,12 +669,8 @@ fn validate_chat_authorization(path: &Path, quote: &str) -> BridgeResult<()> {
             "the user message must explicitly authorize access",
         ));
     }
-    let normalized_quote = lower.replace('/', "\\");
-    let normalized_path = path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .replace('/', "\\");
-    if !normalized_quote.contains(&normalized_path) {
+    // 边界匹配:quote 中必须出现完整路径 token,防止 `C:\data` 匹配 `C:\data2`。
+    if !hanako_bridge_core::path::quote_contains_path(quote, &path.to_string_lossy()) {
         return Err(BridgeError::tool(
             "authorization_path_not_confirmed",
             "the authorization message must contain the exact absolute path",

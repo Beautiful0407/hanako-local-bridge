@@ -366,6 +366,75 @@ pub fn public_path(grant_id: &str, relative: &Path) -> String {
     }
 }
 
+/// 判断授权原话中是否出现指定路径(大小写不敏感,`/` 与 `\` 等价),
+/// 并要求匹配位置前后都不是路径组成部分字符,避免 `C:\data` 误匹配
+/// `C:\data2` 或 `C:\data-archive` 这类相邻路径。
+pub fn quote_contains_path(quote: &str, path: &str) -> bool {
+    bounded_contains(
+        &quote.replace('/', "\\").to_ascii_lowercase(),
+        &path.replace('/', "\\").to_ascii_lowercase(),
+    )
+}
+
+/// 大小写敏感的边界子串匹配(用于命令参数等区分大小写的 token),
+/// 避免短参数如 `-f` 匹配到 `config-file` 内部。
+pub fn quote_contains_token(quote: &str, token: &str) -> bool {
+    bounded_contains(quote, token)
+}
+
+fn bounded_contains(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let haystack = haystack.as_bytes();
+    let needle = needle.as_bytes();
+    if needle.len() > haystack.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index + needle.len() <= haystack.len() {
+        let Some(relative) = haystack[index..]
+            .windows(needle.len())
+            .position(|window| window == needle)
+        else {
+            break;
+        };
+        let position = index + relative;
+        let end = position + needle.len();
+        let before_ok = position == 0 || !is_path_continuation_byte(haystack, position - 1);
+        let after_ok = end >= haystack.len() || !is_path_continuation_byte(haystack, end);
+        if before_ok && after_ok {
+            return true;
+        }
+        index = position + 1;
+    }
+    false
+}
+
+fn is_path_continuation_byte(bytes: &[u8], index: usize) -> bool {
+    let byte = bytes[index];
+    if byte.is_ascii() {
+        matches!(
+            byte,
+            b'a'..=b'z'
+                | b'A'..=b'Z'
+                | b'0'..=b'9'
+                | b'_'
+                | b'-'
+                | b'.'
+                | b'$'
+                | b'%'
+                | b'('
+                | b')'
+                | b'~'
+        )
+    } else {
+        // 非 ASCII 字节(如中文文件名的 UTF-8 字节)一律视为路径延续,
+        // 严格拒绝 `C:\资料` 误匹配 `C:\资料库` 这类相邻路径。
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
@@ -441,5 +510,42 @@ mod tests {
 
         // 盘符相对路径(C:xxx)不属于绝对路径,由调用方在 validate 层拦截。
         let _ = normalize_absolute_local(Path::new(r"C:relative.txt")).unwrap();
+    }
+
+    #[test]
+    fn quote_path_matching_respects_token_boundaries() {
+        // 精确路径 token 匹配通过。
+        assert!(quote_contains_path("我允许访问 C:\\data 目录", r"C:\data"));
+        assert!(quote_contains_path("允许访问 C:\\data 后继续", r"C:\data"));
+        // 相邻目录名不再误匹配(旧 contains 行为会误匹配)。
+        assert!(!quote_contains_path(
+            "我允许访问 C:\\data2 目录",
+            r"C:\data"
+        ));
+        assert!(!quote_contains_path(
+            "我允许访问 C:\\data-archive",
+            r"C:\data"
+        ));
+        assert!(!quote_contains_path("允许访问 C:\\资料库", r"C:\资料"));
+        // 子路径引用仍视为匹配(保留原语义)。
+        assert!(quote_contains_path("我允许访问 C:\\data\\sub", r"C:\data"));
+        // 大小写不敏感 + 正斜杠归一。
+        assert!(quote_contains_path("allow c:/DATA now", r"C:\data"));
+        // 中文路径自身可匹配(中文字符是路径的一部分)。
+        assert!(quote_contains_path("授权 C:\\资料 目录", r"C:\资料"));
+        // 未出现路径时拒绝。
+        assert!(!quote_contains_path("允许访问 D:\\other", r"C:\data"));
+    }
+
+    #[test]
+    fn quote_token_matching_is_case_sensitive_and_bounded() {
+        assert!(quote_contains_token("run script.ps1 -f -o out", "-f"));
+        assert!(!quote_contains_token("run config-file setup", "-f"));
+        assert!(!quote_contains_token("run script -F", "-f"));
+        assert!(quote_contains_token(
+            "run script.ps1 \"C:\\my path\\x\"",
+            r"C:\my path\x"
+        ));
+        assert!(quote_contains_token("empty token", ""));
     }
 }

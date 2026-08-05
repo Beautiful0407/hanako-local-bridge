@@ -218,6 +218,23 @@ impl AppState {
         }
     }
 
+    /// 无认证端点(如 `/health`)使用的脱敏云身份,绝不包含 `claimToken`。
+    pub async fn cloud_identity_public(&self) -> Value {
+        if let Some(cloud) = self.cloud.get() {
+            cloud.client_identity_public().await
+        } else {
+            json!({
+                "status": if self.runtime.config.cloud.enabled { "offline" } else { "disabled" },
+                "claimToken": null,
+                "publicKeyFingerprint": null,
+                "cloudUrl": self.runtime.config.cloud.url,
+                "lastConnectedAt": null,
+                "lastSeenAt": null,
+                "lastError": "cloud connector is not initialized"
+            })
+        }
+    }
+
     pub async fn audit_mcp(&self, mut event: Value) {
         let Some(object) = event.as_object_mut() else {
             return;

@@ -1604,20 +1604,17 @@ fn validate_chat_authorization(spec: &ExecutionSpec, quote: &str) -> BridgeResul
             "the user message must explicitly authorize execution",
         ));
     }
-    let normalized_quote = lower.replace('/', "\\");
-    let normalized_path = spec
-        .script_path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .replace('/', "\\");
-    if !normalized_quote.contains(&normalized_path) {
+    // 边界匹配:quote 中必须出现完整脚本路径 token,防止 `C:\data` 匹配 `C:\data2`。
+    if !hanako_bridge_core::path::quote_contains_path(quote, &spec.script_path.to_string_lossy()) {
         return Err(BridgeError::tool(
             "authorization_path_not_confirmed",
             "the authorization message must contain the exact absolute script path",
         ));
     }
     for argument in &spec.arguments {
-        if !argument.is_empty() && !quote.contains(argument) {
+        // 参数区分大小写且要求边界匹配,短参数如 `-f` 不再匹配 `config-file` 内部。
+        if !argument.is_empty() && !hanako_bridge_core::path::quote_contains_token(quote, argument)
+        {
             return Err(BridgeError::tool(
                 "authorization_arguments_not_confirmed",
                 format!("the authorization message must contain the exact argument: {argument}"),
@@ -1631,10 +1628,14 @@ fn authorization_active(item: &ExecutionAuthorization) -> bool {
     if !item.enabled || item.uses_remaining.is_some_and(|remaining| remaining <= 0) {
         return false;
     }
-    item.expires_at
-        .as_deref()
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .is_none_or(|expires| expires > Utc::now())
+    match item.expires_at.as_deref() {
+        // 未设置过期时间:长期有效。
+        None => true,
+        // 已设置但解析失败:数据异常时 fail-closed,视为已过期。
+        Some(value) => DateTime::parse_from_rfc3339(value)
+            .map(|expires| expires > Utc::now())
+            .unwrap_or(false),
+    }
 }
 
 fn specs_equal(left: &ExecutionSpec, right: &ExecutionSpec) -> bool {
