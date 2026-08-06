@@ -1,5 +1,23 @@
 # 变更记录
 
+## 2.0.2 - 2026-08-06
+
+### 安全修复
+
+- chat 授权**结构性加固**:英文授权词改为边界匹配,`disallow`/`deny`
+  等否定-授权重叠不再被误判为显式授权;中文授权词保持 contains。
+- 否定词表全面扩充(中文 25 词 + 英文 45 词 + `n't` 兜底):覆盖
+  `不/未/未经/尚未/无/别/不要/不能/不准/拒绝/禁止/严禁/切勿/不得/
+  不允许` 与 `don't/can't/won't/wouldn't 等 n't 家族/no/not/nothing/
+  nobody/nowhere/never/without/unless/except/withhold/deny/refuse/
+  prohibit/forbid(含词形)/cannot/unable/decline/reject` 等。
+- 新增独立英文单词边界匹配,`node`/`note` 等不再误伤。
+- 回归测试:19 个否定用例 + 8 个肯定用例。
+
+> 注:chat 授权为启发式否定检测,默认关闭(`allow_chat_authorization:
+> false`);极端构造的自相矛盾句式理论上仍可绕过,属于已记录的残余
+> 风险,安全边界最终由审批环节与本地信任模型兜底。
+
 ## 2.0.1 - 2026-08-05
 
 ### 安全修复
