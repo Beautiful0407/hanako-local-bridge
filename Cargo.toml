@@ -6,6 +6,9 @@ members = [
   "apps/hanako-manager",
   "apps/hanako-updater",
   "crates/hanako-bridge-core",
+  "crates/nuphus-desktop-api",
+  "crates/nuphus-browser",
+  "crates/nuphus-mcp-core",
 ]
 resolver = "2"
 

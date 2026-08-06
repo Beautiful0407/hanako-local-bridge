@@ -18,6 +18,9 @@ ed25519-dalek.workspace = true
 futures-util.workspace = true
 globset.workspace = true
 hanako-bridge-core = { path = "../../crates/hanako-bridge-core" }
+nuphus-desktop-api = { path = "../../crates/nuphus-desktop-api" }
+nuphus-browser = { path = "../../crates/nuphus-browser" }
+nuphus-mcp-core = { path = "../../crates/nuphus-mcp-core" }
 http.workspace = true
 pkcs8.workspace = true
 rand.workspace = true

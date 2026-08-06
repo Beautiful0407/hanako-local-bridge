@@ -16,7 +16,10 @@ use rand::{TryRngCore, rngs::OsRng};
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
-use crate::{access::AccessController, cloud::CloudConnector, execution::ExecutionController};
+use crate::{
+    access::AccessController, cloud::CloudConnector, execution::ExecutionController,
+    nuphus_access::NuphusAccess,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileFingerprint {
@@ -51,6 +54,7 @@ pub struct AppState {
     pub resolver: Arc<PathResolver>,
     pub access: Arc<AccessController>,
     pub execution: Arc<ExecutionController>,
+    pub nuphus: Arc<NuphusAccess>,
     pub cloud: OnceLock<Arc<CloudConnector>>,
     approval_token: Vec<u8>,
     path_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
@@ -105,6 +109,7 @@ impl AppState {
             )
             .await?,
         );
+        let nuphus = Arc::new(NuphusAccess::new(data_dir.clone()).await?);
         execution.start_recovered_monitors().await;
         Ok(Self {
             runtime,
@@ -117,6 +122,7 @@ impl AppState {
             resolver,
             access,
             execution,
+            nuphus,
             cloud: OnceLock::new(),
             approval_token,
             path_locks: Mutex::new(HashMap::new()),

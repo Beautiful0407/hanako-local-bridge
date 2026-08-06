@@ -1,0 +1,83 @@
+[package]
+name = "nuphus-desktop-api"
+version = "2.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/mrpulor-gh/nuphus-mcp"
+authors = ["Nuphus Team"]
+description = "Nuphus desktop control core infrastructure - perceive, find, act, communicate (vendored into hanako-local-bridge)"
+rust-version = "1.78"
+
+[features]
+default = []
+http-server = ["dep:axum", "dep:tower"]
+http = ["http-server"]
+vision = ["dep:ort", "dep:reqwest", "dep:ndarray"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.37", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+
+# HTTP service
+axum = { version = "0.7", features = ["macros"], optional = true }
+tower = { version = "0.4", features = ["timeout"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Screenshot
+xcap = "0.9.8"
+
+# Image processing (png/jpeg/bmp for reading screenshot and template input)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+rusttype = "0.9"
+
+# Color
+palette = "0.7"
+
+# Cache
+lru = "0.12"
+
+# base64
+base64 = "0.22"
+
+# ONNX Runtime (YOLO element detection / PaddleOCR) — optional, feature-gated (vision).
+# Pinned to =2.0.0-rc.12: rc.13 requires a newer onnxruntime (1.26 reports BadVersion).
+# default-features = false: avoid ort-sys download-binaries / tls-native.
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "ndarray", "api-24", "tracing"], optional = true }
+ndarray = { version = "0.17", optional = true }
+
+# App data directory
+dirs = "5"
+
+reqwest = { version = "0.13", features = ["json"], optional = true }
+
+[target.'cfg(not(windows))'.dependencies]
+# Non-Windows mouse/keyboard (macOS + Linux via enigo)
+enigo = "0.2"
+# macOS clipboard
+arboard = "3.4"
+
+[target.'cfg(windows)'.dependencies]
+# Windows API (Windows only)
+windows = { version = "0.56", features = [
+    "Win32",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_Shell",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+] }
+
+[dev-dependencies]
+tokio-test = "0.4"

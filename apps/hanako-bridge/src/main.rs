@@ -5,6 +5,7 @@ mod cloud;
 mod execution;
 mod manager;
 mod mcp;
+mod nuphus_access;
 mod product;
 mod service;
 mod state;

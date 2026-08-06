@@ -74,7 +74,7 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             }
         }
     });
-    vec![
+    let mut defs = vec![
         tool(
             "local_fs.roots",
             "List local roots",
@@ -411,7 +411,41 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             }),
             &[],
         ),
-    ]
+    ];
+    // ── Nuphus 桌面/浏览器自动化(能力授权)──
+    defs.push(tool(
+        "nuphus.request_access",
+        "Request nuphus automation capability",
+        "Request a capability grant for nuphus desktop/browser automation tools. The quote must be the exact current user authorization message mentioning the capability domain (e.g. 允许操作桌面/鼠标/浏览器/剪贴板/窗口). Write tools (mouse/keyboard/window control/clipboard write/browser control) require an active grant; read-only tools (screenshots, lists) run without one.",
+        json!({
+            "capability": { "type": "string", "enum": ["desktop.control", "desktop.input", "desktop.window", "desktop.clipboard", "browser.control"] },
+            "quote": { "type": "string" }
+        }),
+        &["capability", "quote"],
+    ));
+    defs.push(tool(
+        "nuphus.access_status",
+        "List nuphus automation grants",
+        "List all nuphus desktop/browser automation capability grants with their ids, capability, source and expiry.",
+        json!({}),
+        &[],
+    ));
+    defs.push(tool(
+        "nuphus.revoke",
+        "Revoke a nuphus automation grant",
+        "Revoke a nuphus capability grant by id (see nuphus.access_status).",
+        json!({ "grantId": { "type": "string" } }),
+        &["grantId"],
+    ));
+    for nuphus_tool in nuphus_mcp_core::tools::all_tools() {
+        defs.push(json!({
+            "name": nuphus_tool.name,
+            "title": nuphus_tool.name,
+            "description": nuphus_tool.description,
+            "inputSchema": nuphus_tool.input_schema,
+        }));
+    }
+    defs
 }
 
 fn execution_properties(state: &AppState) -> Value {
@@ -536,10 +570,67 @@ fn argument_path(arguments: &Value) -> Result<&str, BridgeError> {
 }
 
 async fn call_tool(state: &AppState, name: &str, arguments: &Value) -> Result<Value, BridgeError> {
-    if name.starts_with("local_exec.") {
+    if name.starts_with("nuphus.") {
+        call_nuphus_access_tool(state, name, arguments).await
+    } else if name.starts_with("desktop_") || name.starts_with("browser_") {
+        call_nuphus_tool(state, name, arguments).await
+    } else if name.starts_with("local_exec.") {
         call_execution_tool(state, name, arguments).await
     } else {
         call_file_tool(state, name, arguments).await
+    }
+}
+
+/// Nuphus 桌面/浏览器自动化工具:先过能力授权门,再执行。
+async fn call_nuphus_tool(
+    state: &AppState,
+    name: &str,
+    arguments: &Value,
+) -> Result<Value, BridgeError> {
+    state.nuphus.require(name, arguments)?;
+    match nuphus_mcp_core::tools::execute(name, arguments).await {
+        Ok(output) if !output.is_error => Ok(content_text(output.text)),
+        Ok(output) => Err(BridgeError::tool(
+            "nuphus_tool_error",
+            format!("{name}: {}", output.text),
+        )),
+        Err(error) => Err(BridgeError::tool(
+            "nuphus_tool_error",
+            format!("{name}: {error}"),
+        )),
+    }
+}
+
+/// Nuphus 能力授权管理工具(nuphus.request_access / access_status / revoke)。
+async fn call_nuphus_access_tool(
+    state: &AppState,
+    name: &str,
+    arguments: &Value,
+) -> Result<Value, BridgeError> {
+    match name {
+        "nuphus.request_access" => {
+            let capability = argument_string(arguments, "capability", "capability_not_found")?;
+            let quote = argument_string(arguments, "quote", "quote_not_found")?;
+            let grant = state.nuphus.request(
+                capability,
+                quote,
+                state.runtime.config.filesystem.chat_grant_minutes,
+            )?;
+            Ok(content_json(json!({ "grant": grant })))
+        }
+        "nuphus.access_status" => {
+            let grants = state.nuphus.list_grants();
+            Ok(content_json(json!({ "grants": grants })))
+        }
+        "nuphus.revoke" => {
+            let grant_id = argument_string(arguments, "grantId", "grant_id_not_found")?;
+            state.nuphus.revoke(grant_id)?;
+            Ok(content_json(json!({ "revoked": grant_id })))
+        }
+        _ => Err(BridgeError::tool(
+            "unknown_tool",
+            format!("unknown nuphus tool: {name}"),
+        )),
     }
 }
 

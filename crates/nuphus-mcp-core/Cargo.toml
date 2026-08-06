@@ -1,0 +1,53 @@
+[package]
+name = "nuphus-mcp-core"
+version = "0.1.9"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/mrpulor-gh/nuphus-mcp"
+description = "Nuphus desktop + browser automation tool layer, vendored into hanako-local-bridge (no stdio server)"
+authors = ["Nuphus Team"]
+
+[features]
+default = []
+vision = ["nuphus-desktop-api/vision"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging (stderr; stdout reserved for JSON-RPC protocol)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+
+# Data directory probing (automation lock shared path)
+dirs = "5"
+
+# Desktop control core (screenshot/input/window) — default features (vision/input/platform/core)
+nuphus-desktop-api = { path = "../nuphus-desktop-api" }
+
+# Browser automation (CDP)
+nuphus-browser = { path = "../nuphus-browser" }
+
+# Screenshot PNG encoding
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# base64 (inline screenshot return)
+base64 = "0.22"
+
+# HTTP (desktop_vision BYOK cloud vision + model download)
+# Reuses the reqwest 0.12 already pulled in by chromiumoxide (default native-tls), no extra dependency tree
+reqwest = { version = "0.13", features = ["json", "stream"] }
+
+# Streaming download (model files)
+futures-util = "0.3"
+
+# Download integrity (model file SHA-256 verification)
+sha2 = "0.10"
+hex = "0.4"
