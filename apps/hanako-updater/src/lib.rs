@@ -128,6 +128,7 @@ pub fn build_release_package(
         "hanako-manager.exe".to_string(),
         "hanako-maintenance.exe".to_string(),
         "update-public-key.xml".to_string(),
+        "assets/hanako-local-bridge.ico".to_string(),
         "payload-manifest.json".to_string(),
     ];
     for executable in [
@@ -138,6 +139,16 @@ pub fn build_release_package(
         copy_file(&binaries_root.join(executable), &stage.join(executable))?;
     }
     copy_file(public_key_path, &stage.join("update-public-key.xml"))?;
+    // 桥主题图标随包分发:安装/更新后 install_root/assets/ 存在该图标,
+    // repair_shell_integration 用它作为快捷方式与卸载项图标。
+    let icon_source = binaries_root.join("assets/hanako-local-bridge.ico");
+    ensure!(
+        icon_source.is_file(),
+        "app icon is missing: {} (copy assets/hanako-local-bridge.ico into the binaries root)",
+        icon_source.display()
+    );
+    fs::create_dir_all(stage.join("assets"))?;
+    copy_file(&icon_source, &stage.join("assets/hanako-local-bridge.ico"))?;
     let payload = PayloadManifest {
         schema_version: 1,
         version: version.to_string(),
@@ -820,12 +831,26 @@ pub fn launch_product_entry(install_root: &Path) {
 }
 
 pub fn repair_shell_integration(install_root: &Path, version: &str) -> anyhow::Result<()> {
-    let product_entry = product_entry_executable(install_root);
+    // 快捷方式目标为托盘管理器(hanako-manager.exe);缺失时回退到产品入口。
+    // 图标使用仓库自带的桥主题图标(assets/hanako-local-bridge.ico),
+    // 图标缺失时回退到目标 exe 自身。
+    let manager_entry = install_root.join("hanako-manager.exe");
+    let shortcut_target = if manager_entry.is_file() {
+        manager_entry
+    } else {
+        product_entry_executable(install_root)
+    };
     ensure!(
-        product_entry.is_file(),
-        "product entry executable is missing: {}",
-        product_entry.display()
+        shortcut_target.is_file(),
+        "shortcut target executable is missing: {}",
+        shortcut_target.display()
     );
+    let icon = install_root.join("assets/hanako-local-bridge.ico");
+    let icon_location = if icon.is_file() {
+        icon.to_string_lossy().into_owned()
+    } else {
+        shortcut_target.to_string_lossy().into_owned()
+    };
     let desktop = env::var_os("USERPROFILE")
         .map(PathBuf::from)
         .context("USERPROFILE is missing")?
@@ -837,9 +862,9 @@ pub fn repair_shell_integration(install_root: &Path, version: &str) -> anyhow::R
         .join("Microsoft/Windows/Start Menu/Programs/Hanako Local Bridge");
     fs::create_dir_all(desktop.parent().context("desktop shortcut has no parent")?)?;
     fs::create_dir_all(&start_menu_dir)?;
-    let mut shortcut = ShellLink::new(&product_entry)?;
+    let mut shortcut = ShellLink::new(&shortcut_target)?;
     shortcut.set_name(Some("Hanako Local Bridge".to_string()));
-    shortcut.set_icon_location(Some(product_entry.to_string_lossy().into_owned()));
+    shortcut.set_icon_location(Some(icon_location.clone()));
     shortcut.create_lnk(&desktop)?;
     shortcut.create_lnk(start_menu_dir.join("Hanako Local Bridge.lnk"))?;
 
@@ -855,7 +880,7 @@ pub fn repair_shell_integration(install_root: &Path, version: &str) -> anyhow::R
     key.set_value("DisplayVersion", &version)?;
     key.set_value("Publisher", &"Hanako")?;
     key.set_value("InstallLocation", &install_root.to_string_lossy().as_ref())?;
-    key.set_value("DisplayIcon", &product_entry.to_string_lossy().as_ref())?;
+    key.set_value("DisplayIcon", &icon_location.as_str())?;
     key.set_value("UninstallString", &uninstall_string)?;
     key.set_value("QuietUninstallString", &uninstall_string)?;
     key.set_value("NoModify", &1u32)?;
@@ -1357,6 +1382,8 @@ mod tests {
         ] {
             fs::write(binaries.join(name), name).unwrap();
         }
+        fs::create_dir_all(binaries.join("assets")).unwrap();
+        fs::write(binaries.join("assets/hanako-local-bridge.ico"), "icon").unwrap();
         let public_key = temp.path().join("update-public-key.xml");
         fs::write(&public_key, "<RSAKeyValue/>").unwrap();
         let result = build_release_package(
@@ -1370,7 +1397,7 @@ mod tests {
             "test",
         )
         .unwrap();
-        assert_eq!(result.files.len(), 5);
+        assert_eq!(result.files.len(), 6);
         let file = fs::File::open(result.package_path).unwrap();
         let mut archive = ZipArchive::new(file).unwrap();
         let names = (0..archive.len())
@@ -1382,6 +1409,7 @@ mod tests {
                 "hanako-bridge.exe".to_string(),
                 "hanako-manager.exe".to_string(),
                 "hanako-maintenance.exe".to_string(),
+                "assets/hanako-local-bridge.ico".to_string(),
                 "payload-manifest.json".to_string(),
                 "update-public-key.xml".to_string(),
             ])
