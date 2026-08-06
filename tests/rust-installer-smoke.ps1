@@ -370,10 +370,17 @@ try {
   $startMenuShortcut = Join-Path $appDataRoot "Microsoft\Windows\Start Menu\Programs\Hanako Local Bridge\Hanako Local Bridge.lnk"
   Assert-Path $startMenuShortcut "Start menu shortcut was not created."
   $bridgePath = Join-Path $installRoot "hanako-bridge.exe"
+  $managerPath = Join-Path $installRoot "hanako-manager.exe"
+  $expectedIcon = Join-Path $installRoot "assets\hanako-local-bridge.ico"
   foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
     $shortcutTarget = Get-ShortcutTarget $shortcutPath
-    if (-not [string]::Equals($shortcutTarget, $bridgePath, [System.StringComparison]::OrdinalIgnoreCase)) {
-      throw "Product shortcut points to '$shortcutTarget' instead of the unified entry '$bridgePath'."
+    if (-not [string]::Equals($shortcutTarget, $managerPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Product shortcut points to '$shortcutTarget' instead of the manager entry '$managerPath'."
+    }
+    $shortcutIcon = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath).IconLocation
+    $shortcutIcon = ($shortcutIcon -replace ',0$', '') -replace '/', '\'
+    if (-not [string]::Equals($shortcutIcon, $expectedIcon, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Product shortcut icon points to '$shortcutIcon' instead of '$expectedIcon'."
     }
   }
   if (-not (Test-Path "HKCU:\$registrySubKey")) {

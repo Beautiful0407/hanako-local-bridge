@@ -187,13 +187,15 @@ try {
   }
   foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
     $shortcutTarget = Get-ShortcutTarget $shortcutPath
-    if (-not [string]::Equals($shortcutTarget, $bridgePath, [System.StringComparison]::OrdinalIgnoreCase)) {
-      throw "Online update left product shortcut '$shortcutPath' pointing to '$shortcutTarget' instead of '$bridgePath'."
+    if (-not [string]::Equals($shortcutTarget, $managerPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Online update left product shortcut '$shortcutPath' pointing to '$shortcutTarget' instead of '$managerPath'."
     }
   }
+  $expectedIcon = Join-Path $installRoot "assets\hanako-local-bridge.ico"
   $uninstallProperties = Get-ItemProperty -Path $uninstallKey
-  if (-not [string]::Equals([string]$uninstallProperties.DisplayIcon, $bridgePath, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Online update left DisplayIcon pointing to '$($uninstallProperties.DisplayIcon)' instead of '$bridgePath'."
+  $displayIcon = ([string]$uninstallProperties.DisplayIcon -replace ',0$', '') -replace '/', '\'
+  if (-not [string]::Equals($displayIcon, $expectedIcon, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Online update left DisplayIcon pointing to '$displayIcon' instead of '$expectedIcon'."
   }
   if ([string]$uninstallProperties.DisplayVersion -ne $newVersion) {
     throw "Online update did not refresh DisplayVersion."
