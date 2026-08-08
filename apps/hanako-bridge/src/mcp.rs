@@ -372,6 +372,31 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             }),
             &[],
         ),
+        tool(
+            "local_fs.trash_list",
+            "List bridge trash contents",
+            "List recoverable items in the .hana-trash directory associated with a path (or the first configured root). Each item shows trashName, originalPath (when known), type, size, and deletion time.",
+            json!({"path": { "type": "string" }}),
+            &[],
+        ),
+        tool(
+            "local_fs.trash_restore",
+            "Restore a trashed item",
+            "Move a trashed item back to its original path (or a destination override). Fails if the destination already exists.",
+            json!({
+                "trashName": { "type": "string" },
+                "path": { "type": "string" },
+                "destination": { "type": "string" }
+            }),
+            &["trashName"],
+        ),
+        tool(
+            "local_fs.trash_clear",
+            "Permanently clear bridge trash",
+            "Permanently delete all items in the .hana-trash directory associated with a path. This cannot be undone.",
+            json!({"path": { "type": "string" }}),
+            &["path"],
+        ),
         execution_tool(
             state,
             "local_exec.runtimes",
@@ -778,6 +803,9 @@ fn call_file_tool<'a>(
             "local_fs.delete_to_trash" => delete_to_trash(state, arguments).await,
             "local_fs.batch" => run_batch(state, arguments).await,
             "local_fs.history" => query_history(state, arguments).await,
+            "local_fs.trash_list" => trash_list(state, arguments).await,
+            "local_fs.trash_restore" => trash_restore(state, arguments).await,
+            "local_fs.trash_clear" => trash_clear(state, arguments).await,
             _ => Err(BridgeError::tool(
                 "unknown_tool",
                 format!("unknown tool: {name}"),
@@ -1966,6 +1994,10 @@ async fn delete_to_trash(state: &AppState, arguments: &Value) -> Result<Value, B
     );
     let destination = trash_root.join(&trash_name);
     let source = resolved.real.clone();
+    let original_relative = resolved.relative.clone();
+    let manifest_source = source.clone();
+    let manifest_trash_root = trash_root.clone();
+    let manifest_trash_name = trash_name.clone();
     tokio::task::spawn_blocking(move || -> Result<(), BridgeError> {
         if fs::rename(&source, &destination).is_ok() {
             return Ok(());
@@ -1982,10 +2014,259 @@ async fn delete_to_trash(state: &AppState, arguments: &Value) -> Result<Value, B
     })
     .await
     .map_err(|error| BridgeError::tool("trash_failed", error.to_string()))??;
+    // Record trash metadata for later restore (original path, delete time).
+    append_trash_manifest(
+        &manifest_trash_root,
+        &manifest_trash_name,
+        &original_relative,
+        &manifest_source,
+    );
     Ok(content_json(json!({
         "deleted": public_path(&resolved.grant.id, &resolved.relative),
         "recoverable": true,
         "trashName": trash_name
+    })))
+}
+
+const TRASH_MANIFEST_FILE: &str = ".hana-trash-manifest.json";
+
+/// Appends a trash entry to the per-trash metadata manifest (JSON Lines).
+/// Best-effort: metadata loss only means restore needs a destination hint.
+fn append_trash_manifest(
+    trash_root: &Path,
+    trash_name: &str,
+    original_relative: &Path,
+    original_absolute: &Path,
+) {
+    let entry = json!({
+        "trashName": trash_name,
+        "originalPath": original_absolute.to_string_lossy(),
+        "originalRelative": original_relative.to_string_lossy(),
+        "deletedAt": chrono::Utc::now().to_rfc3339()
+    });
+    let Ok(mut line) = serde_json::to_string(&entry) else {
+        return;
+    };
+    line.push('\n');
+    let manifest_path = trash_root.join(TRASH_MANIFEST_FILE);
+    use std::io::Write;
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(manifest_path)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
+/// Reads trash manifest entries for a single trash root.
+fn read_trash_manifest(trash_root: &Path) -> Vec<Value> {
+    let manifest_path = trash_root.join(TRASH_MANIFEST_FILE);
+    let Ok(text) = fs::read_to_string(&manifest_path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+        .collect()
+}
+
+/// Finds the .hana-trash directory associated with a path.
+///
+/// Mirrors delete_to_trash: full-trust puts trash in the item's own parent
+/// directory; grant-scoped puts it in the authorized root. For management
+/// tools the caller passes a directory (its trash is `dir/.hana-trash`);
+/// for a file path the trash is `parent/.hana-trash`.
+async fn trash_root_for(state: &AppState, path_input: &str) -> Result<PathBuf, BridgeError> {
+    let resolved = state.resolver.resolve(path_input, AccessMode::Read, true)?;
+    let real = resolved.real.clone();
+    let trash_root = if resolved.grant.source == "full_trust" {
+        if real.is_dir() {
+            real.join(".hana-trash")
+        } else {
+            real.parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(".hana-trash")
+        }
+    } else {
+        resolved.grant.path.join(".hana-trash")
+    };
+    Ok(trash_root)
+}
+
+async fn trash_list(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let path_input = arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            // Default: first configured root
+            state
+                .resolver
+                .grants()
+                .iter()
+                .find(|grant| grant.enabled)
+                .map(|grant| grant.path.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "C:\\".to_string())
+        });
+    let trash_root = trash_root_for(state, &path_input).await?;
+    if !trash_root.is_dir() {
+        return Ok(content_json(
+            json!({"path": trash_root, "items": [], "count": 0}),
+        ));
+    }
+    let trash_root_owned = trash_root.clone();
+    let items = tokio::task::spawn_blocking(move || -> Vec<Value> {
+        let manifest = read_trash_manifest(&trash_root_owned);
+        let mut items = Vec::new();
+        if let Ok(entries) = fs::read_dir(&trash_root_owned) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name == TRASH_MANIFEST_FILE {
+                    continue;
+                }
+                let metadata = entry.metadata().ok();
+                let original = manifest
+                    .iter()
+                    .find(|item| item.get("trashName").and_then(Value::as_str) == Some(name.as_str()))
+                    .and_then(|item| item.get("originalPath").and_then(Value::as_str))
+                    .map(str::to_string);
+                items.push(json!({
+                    "trashName": name,
+                    "originalPath": original,
+                    "type": if metadata.as_ref().is_some_and(|m| m.is_dir()) { "directory" } else { "file" },
+                    "size": metadata.map(|m| m.len()).unwrap_or(0),
+                    "deletedAt": manifest.iter().find(|item| item.get("trashName").and_then(Value::as_str) == Some(name.as_str())).and_then(|item| item.get("deletedAt").and_then(Value::as_str)).map(str::to_string)
+                }));
+            }
+        }
+        items
+    })
+    .await
+    .unwrap_or_default();
+    Ok(content_json(json!({
+        "path": trash_root,
+        "items": items,
+        "count": items.len()
+    })))
+}
+
+async fn trash_restore(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let trash_name = arguments
+        .get("trashName")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| BridgeError::tool("trash_name_required", "trashName is required"))?;
+    let path_input = arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "C:\\".to_string());
+    let destination_hint = arguments.get("destination").and_then(Value::as_str);
+    let trash_root = trash_root_for(state, &path_input).await?;
+    let trash_source = trash_root.join(trash_name);
+    if !trash_source.exists() {
+        return Err(BridgeError::tool(
+            "trash_item_not_found",
+            format!("trash item not found: {trash_name}"),
+        ));
+    }
+    let manifest = read_trash_manifest(&trash_root);
+    let entry = manifest
+        .iter()
+        .find(|item| item.get("trashName").and_then(Value::as_str) == Some(trash_name));
+    let original = entry
+        .and_then(|item| item.get("originalPath").and_then(Value::as_str))
+        .map(PathBuf::from);
+    let destination = match destination_hint {
+        Some(hint) => {
+            let resolved = state.resolver.resolve(hint, AccessMode::ReadWrite, true)?;
+            Some(resolved.real)
+        }
+        None => original,
+    };
+    let Some(destination) = destination else {
+        return Err(BridgeError::tool(
+            "original_path_unknown",
+            "original path is unknown; provide destination",
+        ));
+    };
+    if destination.exists() {
+        return Err(BridgeError::tool(
+            "destination_exists",
+            "restore destination already exists; provide a new destination",
+        ));
+    }
+    let _guard = state.lock_path(&destination).await;
+    let trash_source_owned = trash_source.clone();
+    let destination_owned = destination.clone();
+    let result = tokio::task::spawn_blocking(move || -> Result<(), BridgeError> {
+        if let Some(parent) = destination_owned.parent()
+            && !parent.is_dir()
+        {
+            fs::create_dir_all(parent)
+                .map_err(|error| BridgeError::tool("mkdir_failed", error.to_string()))?;
+        }
+        if fs::rename(&trash_source_owned, &destination_owned).is_err() {
+            copy_recursively(&trash_source_owned, &destination_owned)?;
+            if trash_source_owned.is_dir() {
+                fs::remove_dir_all(&trash_source_owned)
+                    .map_err(|error| BridgeError::tool("restore_failed", error.to_string()))?;
+            } else {
+                fs::remove_file(&trash_source_owned)
+                    .map_err(|error| BridgeError::tool("restore_failed", error.to_string()))?;
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| BridgeError::tool("restore_failed", error.to_string()))??;
+    let _ = result;
+    Ok(content_json(json!({
+        "restored": destination.to_string_lossy(),
+        "trashName": trash_name
+    })))
+}
+
+async fn trash_clear(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let path_input = arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| BridgeError::tool("path_required", "path is required"))?;
+    let trash_root = trash_root_for(state, &path_input).await?;
+    if !trash_root.is_dir() {
+        return Ok(content_json(json!({"path": trash_root, "cleared": 0})));
+    }
+    let trash_root_owned = trash_root.clone();
+    let removed = tokio::task::spawn_blocking(move || -> usize {
+        let mut count = 0;
+        if let Ok(entries) = fs::read_dir(&trash_root_owned) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name == TRASH_MANIFEST_FILE {
+                    continue;
+                }
+                let ok = if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    fs::remove_dir_all(&path).is_ok()
+                } else {
+                    fs::remove_file(&path).is_ok()
+                };
+                if ok {
+                    count += 1;
+                }
+            }
+        }
+        let _ = fs::remove_file(trash_root_owned.join(TRASH_MANIFEST_FILE));
+        count
+    })
+    .await
+    .unwrap_or(0);
+    Ok(content_json(json!({
+        "path": trash_root,
+        "cleared": removed
     })))
 }
 
