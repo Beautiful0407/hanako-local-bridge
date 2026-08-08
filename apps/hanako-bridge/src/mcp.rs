@@ -14,6 +14,7 @@ use hanako_bridge_core::{
     BridgeError,
     path::{AccessMode, ResolvedPath, public_path},
 };
+use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
@@ -338,6 +339,26 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             "Move a file or directory into a recoverable .hana-trash directory.",
             path_property,
             &["path"],
+        ),
+        tool(
+            "local_fs.batch",
+            "Run a transactional batch of file operations",
+            "Run copy/move/delete operations atomically: all succeed or all roll back. Each operation is { op: copy|move|delete, source, destination? }. Preflights every operation, then executes in order; on any failure, completed operations are undone in reverse order. Bounded to 100 operations per call.",
+            json!({
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "op": { "type": "string", "enum": ["copy", "move", "delete"] },
+                            "source": { "type": "string" },
+                            "destination": { "type": "string" }
+                        }
+                    }
+                },
+                "createParents": { "type": "boolean" }
+            }),
+            &["operations"],
         ),
         execution_tool(
             state,
@@ -715,6 +736,7 @@ fn call_file_tool<'a>(
             "local_fs.copy" => copy_or_move(state, arguments, false).await,
             "local_fs.move" => copy_or_move(state, arguments, true).await,
             "local_fs.delete_to_trash" => delete_to_trash(state, arguments).await,
+            "local_fs.batch" => run_batch(state, arguments).await,
             _ => Err(BridgeError::tool(
                 "unknown_tool",
                 format!("unknown tool: {name}"),
@@ -1924,6 +1946,358 @@ async fn delete_to_trash(state: &AppState, arguments: &Value) -> Result<Value, B
         "recoverable": true,
         "trashName": trash_name
     })))
+}
+
+/// Runs a transactional batch of copy/move/delete operations.
+///
+/// Every operation is preflighted first; then each executes in order while
+/// recording an undo action. If any operation fails, completed operations are
+/// rolled back in reverse order (copy -> remove target; move -> rename back;
+/// delete -> restore from .hana-trash). This gives all-or-nothing semantics
+/// for a bounded set of file operations.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchOperationInput {
+    op: String,
+    source: String,
+    destination: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatchOpKind {
+    Copy,
+    Move,
+    Delete,
+}
+
+#[derive(Clone)]
+struct PreparedBatchOp {
+    kind: BatchOpKind,
+    source: PathBuf,
+    destination: Option<PathBuf>,
+    // For delete: the trash destination path (used for restore on rollback).
+    trash_destination: Option<PathBuf>,
+}
+
+struct BatchUndo {
+    kind: BatchOpKind,
+    source: PathBuf,
+    destination: Option<PathBuf>,
+    trash_destination: Option<PathBuf>,
+}
+
+async fn run_batch(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    const MAX_BATCH_OPS: usize = 100;
+    let ops = arguments
+        .get("operations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| BridgeError::tool("operations_required", "operations array is required"))?;
+    if ops.len() > MAX_BATCH_OPS {
+        return Err(BridgeError::tool(
+            "batch_too_large",
+            format!("batch exceeds {MAX_BATCH_OPS} operations"),
+        ));
+    }
+    if ops.is_empty() {
+        return Ok(content_json(json!({
+            "operations": [],
+            "committed": true,
+            "rolledBack": false
+        })));
+    }
+    let create_parents = arguments
+        .get("createParents")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    // Parse + preflight resolve every path up front.
+    let mut prepared = Vec::with_capacity(ops.len());
+    for raw in ops {
+        let input: BatchOperationInput = serde_json::from_value(raw.clone())
+            .map_err(|error| BridgeError::tool("invalid_batch_operation", error.to_string()))?;
+        let kind = match input.op.as_str() {
+            "copy" => BatchOpKind::Copy,
+            "move" => BatchOpKind::Move,
+            "delete" => BatchOpKind::Delete,
+            other => {
+                return Err(BridgeError::tool(
+                    "invalid_batch_operation",
+                    format!("unsupported op: {other}"),
+                ));
+            }
+        };
+        let source_mode = if kind == BatchOpKind::Copy {
+            AccessMode::Read
+        } else {
+            AccessMode::ReadWrite
+        };
+        let source = state
+            .resolver
+            .resolve(&input.source, source_mode, false)
+            .map_err(|error| BridgeError::tool("batch_preflight_failed", error.to_string()))?;
+        let destination = match input.destination {
+            Some(dest) => Some(
+                state
+                    .resolver
+                    .resolve(&dest, AccessMode::ReadWrite, true)
+                    .map_err(|error| {
+                        BridgeError::tool("batch_preflight_failed", error.to_string())
+                    })?
+                    .real,
+            ),
+            None => None,
+        };
+        if kind != BatchOpKind::Delete && destination.is_none() {
+            return Err(BridgeError::tool(
+                "batch_preflight_failed",
+                "copy/move requires destination",
+            ));
+        }
+        prepared.push(PreparedBatchOp {
+            kind,
+            source: source.real,
+            destination,
+            trash_destination: None,
+        });
+    }
+
+    // Fixed-order locking over every involved path (prevents deadlock).
+    let mut lock_paths: Vec<PathBuf> = prepared
+        .iter()
+        .flat_map(|op| {
+            let mut paths = vec![op.source.clone()];
+            if let Some(dest) = &op.destination {
+                paths.push(dest.clone());
+            }
+            paths
+        })
+        .collect();
+    lock_paths.sort_by(|a, b| {
+        a.to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&b.to_string_lossy().to_ascii_lowercase())
+    });
+    lock_paths.dedup();
+    let mut _guards = Vec::with_capacity(lock_paths.len());
+    for path in &lock_paths {
+        _guards.push(state.lock_path(path).await);
+    }
+
+    // Execute with undo journal.
+    let mut undo_log: Vec<BatchUndo> = Vec::new();
+    let mut results = Vec::with_capacity(prepared.len());
+    let mut committed = false;
+    let mut failed_index = None;
+    let mut failure_message = String::new();
+
+    let mut execution = Vec::new();
+    for (index, op) in prepared.iter().enumerate() {
+        execution.push((index, op.clone()));
+    }
+    // The actual file work happens on the blocking pool; the undo log is
+    // filled synchronously as each step succeeds.
+    {
+        let create_parents = create_parents;
+        let moved = tokio::task::spawn_blocking(
+            move || -> Result<Vec<BatchStepResult>, (usize, String, Vec<BatchUndo>)> {
+                let mut results = Vec::with_capacity(execution.len());
+                for (index, op) in &execution {
+                    let outcome = execute_batch_step(op, create_parents);
+                    match outcome {
+                        Ok(step) => results.push(step),
+                        Err(error) => {
+                            let undos = results.into_iter().map(|step| step.undo).collect();
+                            return Err((*index, error, undos));
+                        }
+                    }
+                }
+                Ok(results)
+            },
+        )
+        .await
+        .map_err(|error| BridgeError::tool("batch_failed", error.to_string()))?;
+
+        match moved {
+            Ok(steps) => {
+                for step in steps {
+                    undo_log.push(step.undo);
+                    results.push(step.result);
+                }
+                committed = true;
+            }
+            Err((index, message, undos)) => {
+                failed_index = Some(index);
+                failure_message = message;
+                undo_log = undos;
+                committed = false;
+            }
+        }
+    }
+
+    // Rollback in reverse order if anything failed.
+    if !committed {
+        for undo in undo_log.iter().rev() {
+            let _ = rollback_batch_step(undo);
+        }
+    }
+
+    Ok(content_json(json!({
+        "operations": results,
+        "committed": committed,
+        "rolledBack": !committed && failed_index.is_some(),
+        "failedIndex": failed_index,
+        "error": if failure_message.is_empty() { Value::Null } else { Value::String(failure_message) }
+    })))
+}
+
+struct BatchStepResult {
+    result: Value,
+    undo: BatchUndo,
+}
+
+fn execute_batch_step(
+    op: &PreparedBatchOp,
+    create_parents: bool,
+) -> Result<BatchStepResult, String> {
+    match op.kind {
+        BatchOpKind::Copy => {
+            let destination = op.destination.clone().ok_or("copy requires destination")?;
+            if destination.exists() {
+                return Err("destination already exists".to_string());
+            }
+            ensure_parent(&destination, create_parents)?;
+            copy_recursively(&op.source, &destination).map_err(|error| error.to_string())?;
+            Ok(BatchStepResult {
+                result: json!({"op": "copy", "source": op.source, "destination": destination, "status": "ok"}),
+                undo: BatchUndo {
+                    kind: BatchOpKind::Copy,
+                    source: op.source.clone(),
+                    destination: Some(destination.clone()),
+                    trash_destination: None,
+                },
+            })
+        }
+        BatchOpKind::Move => {
+            let destination = op.destination.clone().ok_or("move requires destination")?;
+            if destination.exists() {
+                return Err("destination already exists".to_string());
+            }
+            ensure_parent(&destination, create_parents)?;
+            if fs::rename(&op.source, &destination).is_ok() {
+                return Ok(BatchStepResult {
+                    result: json!({"op": "move", "source": op.source, "destination": destination, "status": "ok"}),
+                    undo: BatchUndo {
+                        kind: BatchOpKind::Move,
+                        source: op.source.clone(),
+                        destination: Some(destination.clone()),
+                        trash_destination: None,
+                    },
+                });
+            }
+            copy_recursively(&op.source, &destination).map_err(|error| error.to_string())?;
+            remove_path(&op.source)?;
+            Ok(BatchStepResult {
+                result: json!({"op": "move", "source": op.source, "destination": destination, "status": "ok"}),
+                undo: BatchUndo {
+                    kind: BatchOpKind::Move,
+                    source: op.source.clone(),
+                    destination: Some(destination.clone()),
+                    trash_destination: None,
+                },
+            })
+        }
+        BatchOpKind::Delete => {
+            if op.source.is_dir() {
+                return Err("directory delete requires a file in batch mode".to_string());
+            }
+            if !op.source.exists() {
+                return Err("source does not exist".to_string());
+            }
+            let trash_root = op
+                .source
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(".hana-trash");
+            fs::create_dir_all(&trash_root).map_err(|error| error.to_string())?;
+            let stamp = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S-%3fZ");
+            let name = op
+                .source
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("item");
+            let trash_name = format!(
+                "{stamp}-{}-{name}",
+                &Uuid::new_v4().simple().to_string()[..6]
+            );
+            let trash_destination = trash_root.join(&trash_name);
+            if fs::rename(&op.source, &trash_destination).is_err() {
+                copy_recursively(&op.source, &trash_destination)
+                    .map_err(|error| error.to_string())?;
+                remove_path(&op.source)?;
+            }
+            Ok(BatchStepResult {
+                result: json!({"op": "delete", "source": op.source, "status": "ok", "recoverable": true}),
+                undo: BatchUndo {
+                    kind: BatchOpKind::Delete,
+                    source: op.source.clone(),
+                    destination: None,
+                    trash_destination: Some(trash_destination),
+                },
+            })
+        }
+    }
+}
+
+fn rollback_batch_step(undo: &BatchUndo) -> Result<(), String> {
+    match undo.kind {
+        BatchOpKind::Copy => {
+            if let Some(destination) = &undo.destination
+                && destination.exists()
+            {
+                remove_path(destination)?;
+            }
+            Ok(())
+        }
+        BatchOpKind::Move => {
+            if let Some(destination) = &undo.destination
+                && destination.exists()
+                && !undo.source.exists()
+            {
+                let _ = fs::rename(destination, &undo.source);
+            }
+            Ok(())
+        }
+        BatchOpKind::Delete => {
+            if let Some(trash_destination) = &undo.trash_destination
+                && trash_destination.exists()
+                && !undo.source.exists()
+            {
+                let _ = fs::rename(trash_destination, &undo.source);
+            }
+            Ok(())
+        }
+    }
+}
+
+fn ensure_parent(destination: &Path, create_parents: bool) -> Result<(), String> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| "destination parent does not exist".to_string())?;
+    if create_parents {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    if !parent.is_dir() {
+        return Err("destination parent does not exist".to_string());
+    }
+    Ok(())
+}
+
+fn remove_path(path: &Path) -> Result<(), String> {
+    if path.is_dir() {
+        fs::remove_dir_all(path).map_err(|error| error.to_string())
+    } else {
+        fs::remove_file(path).map_err(|error| error.to_string())
+    }
 }
 
 fn glob_matcher(pattern: Option<&str>) -> Result<Option<GlobMatcher>, BridgeError> {
