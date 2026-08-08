@@ -9,83 +9,185 @@
     :root {
       color-scheme: light dark;
       font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-      background: #f4f5f7;
-      color: #202124;
+      --bg: #f2f4f8;
+      --surface: #ffffff;
+      --surface-2: #eef1f6;
+      --border: #dde2ea;
+      --text: #1d2430;
+      --text-2: #5b6675;
+      --text-3: #8a94a3;
+      --brand: #2563eb;
+      --brand-strong: #1d4ed8;
+      --brand-soft: #e8effc;
+      --ok: #16a34a;
+      --ok-soft: #e3f5e9;
+      --warn: #d97706;
+      --warn-soft: #fdf1dd;
+      --err: #dc2626;
+      --err-soft: #fde8e8;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 3px rgba(16, 24, 40, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #101318;
+        --surface: #1a1f27;
+        --surface-2: #232a35;
+        --border: #303845;
+        --text: #e8ecf2;
+        --text-2: #a3adbc;
+        --text-3: #6b7686;
+        --brand: #4f8cff;
+        --brand-strong: #7aa8ff;
+        --brand-soft: #1d2b45;
+        --ok: #34d17b;
+        --ok-soft: #123527;
+        --warn: #f5b044;
+        --warn-soft: #3a2d12;
+        --err: #ff6b6b;
+        --err-soft: #3a1a1a;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .25);
+      }
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 720px; background: #f4f5f7; color: #202124; }
+    body { margin: 0; min-width: 760px; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.55; }
     button, input, select { font: inherit; }
-    button { min-height: 32px; border: 1px solid #b8bec6; background: #fff; color: #202124; padding: 0 13px; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #f0f3f7; }
-    button:disabled { cursor: wait; opacity: 0.62; }
-    button.primary { background: #1769aa; color: #fff; border-color: #1769aa; }
-    button.danger { color: #a12622; }
-    input, select { width: 100%; min-height: 34px; border: 1px solid #b8bec6; border-radius: 5px; padding: 5px 9px; background: #fff; color: #202124; }
-    .app { display: grid; grid-template-columns: 184px minmax(0, 1fr); min-height: 100vh; }
-    aside { background: #eef0f3; border-right: 1px solid #d5d9df; padding: 16px 10px; }
-    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; font-weight: 650; }
-    .brand-mark { width: 24px; height: 24px; border-radius: 5px; background: #1769aa; color: #fff; display: grid; place-items: center; font-size: 12px; }
-    nav { display: grid; gap: 3px; }
-    nav button { border: 0; background: transparent; text-align: left; width: 100%; min-height: 38px; padding: 0 10px; }
-    nav button.active { background: #dce7f2; color: #0f568e; font-weight: 600; }
+    button {
+      min-height: 36px; border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); padding: 0 16px; border-radius: 9px; cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, transform .05s ease;
+    }
+    button:hover { background: var(--surface-2); }
+    button:active { transform: translateY(1px); }
+    button:disabled { cursor: wait; opacity: .55; }
+    button.primary {
+      background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+      color: #fff; border: none; box-shadow: 0 2px 8px rgba(37, 99, 235, .35);
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, transparent); background: transparent; }
+    button.danger:hover { background: var(--err-soft); }
+    button.big { min-height: 46px; font-size: 15px; font-weight: 600; padding: 0 28px; border-radius: 12px; }
+    input, select {
+      width: 100%; min-height: 36px; border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 10px; background: var(--surface); color: var(--text);
+    }
+    input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent); border-color: var(--brand); }
+    .app { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 100vh; }
+    aside { background: var(--surface); border-right: 1px solid var(--border); padding: 18px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 20px; font-weight: 700; font-size: 15px; }
+    .brand-mark {
+      width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: #fff; font-size: 13px; font-weight: 700;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, .4);
+    }
+    nav { display: grid; gap: 4px; }
+    nav button {
+      border: 0; background: transparent; text-align: left; width: 100%; min-height: 42px;
+      padding: 0 14px; border-radius: 9px; color: var(--text-2); font-weight: 500;
+      display: flex; align-items: center; gap: 10px;
+    }
+    nav button:hover { background: var(--surface-2); color: var(--text); }
+    nav button.active { background: var(--brand-soft); color: var(--brand-strong); font-weight: 650; }
+    .nav-icon { width: 18px; text-align: center; font-size: 15px; opacity: .9; }
     main { min-width: 0; }
-    header { height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #d9dde3; background: #fff; }
-    .header-title { font-weight: 650; }
-    .status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #81878f; }
-    .dot.pass { background: #27864d; }
-    .dot.warning { background: #c47a13; }
-    .dot.error { background: #bd3434; }
-    .page { display: none; padding: 22px 26px 34px; max-width: 1180px; }
-    .page.active { display: block; }
-    h1 { margin: 0; font-size: 24px; font-weight: 650; }
-    h2 { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
-    .subtitle { margin: 5px 0 20px; color: #66707a; font-size: 13px; }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); border: 1px solid #d9dde3; background: #fff; border-radius: 7px; overflow: hidden; }
-    .metric { padding: 15px 17px; border-left: 1px solid #e1e4e8; }
-    .metric:first-child { border-left: 0; }
-    .metric-label { color: #68717b; font-size: 12px; }
-    .metric-value { margin-top: 6px; font-size: 19px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .section { margin-top: 18px; background: #fff; border: 1px solid #d9dde3; border-radius: 7px; padding: 17px; }
-    .kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px 18px; margin: 0; }
-    .kv dt { color: #68717b; }
-    .kv dd { margin: 0; min-width: 0; word-break: break-all; }
+    header {
+      height: 60px; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px; border-bottom: 1px solid var(--border); background: var(--surface);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .header-title { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 10px; }
+    .header-title .device-chip { color: var(--text-2); font-weight: 500; font-size: 13px; padding: 3px 10px; background: var(--surface-2); border-radius: 20px; }
+    .status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); }
+    .dot.pass { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+    .dot.warning { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+    .dot.error { background: var(--err); box-shadow: 0 0 0 4px var(--err-soft); }
+    .page { display: none; padding: 26px 30px 40px; max-width: 1280px; }
+    .page.active { display: block; animation: fadein .18s ease; }
+    @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+    .subtitle { margin: 6px 0 22px; color: var(--text-2); font-size: 13px; }
+    .section { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    h2 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
+    .kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px 20px; margin: 0; }
+    .kv dt { color: var(--text-2); }
+    .kv dd { margin: 0; min-width: 0; word-break: break-all; font-weight: 500; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #e4e7eb; padding: 9px 8px; text-align: left; vertical-align: top; font-size: 13px; }
-    th { color: #68717b; font-weight: 600; }
+    th, td { border-bottom: 1px solid var(--border); padding: 10px 10px; text-align: left; vertical-align: top; font-size: 13px; }
+    th { color: var(--text-2); font-weight: 600; }
     tr:last-child td { border-bottom: 0; }
-    .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; background: #edf0f3; font-size: 12px; }
-    .badge.pass { background: #e2f3e8; color: #176c3a; }
-    .badge.warning { background: #fff0d5; color: #8b570d; }
-    .badge.error { background: #fbe3e3; color: #a12622; }
-    #check-rows td:first-child { width: 150px; font-weight: 600; }
-    #check-rows td:nth-child(2) { width: 90px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
-    label { display: grid; gap: 6px; color: #59636e; font-size: 13px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; background: var(--surface-2); font-size: 12px; font-weight: 600; }
+    .badge.pass { background: var(--ok-soft); color: var(--ok); }
+    .badge.warning { background: var(--warn-soft); color: var(--warn); }
+    .badge.error { background: var(--err-soft); color: var(--err); }
+    #check-rows td:first-child { width: 160px; font-weight: 600; }
+    #check-rows td:nth-child(2) { width: 100px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+    label { display: grid; gap: 7px; color: var(--text-2); font-size: 13px; font-weight: 500; }
     label.wide { grid-column: 1 / -1; }
-    .root-row { display: grid; grid-template-columns: 150px minmax(240px, 1fr) 120px 36px; gap: 8px; margin-top: 8px; }
+    .root-row { display: grid; grid-template-columns: 150px minmax(240px, 1fr) 120px 36px; gap: 8px; margin-top: 10px; }
     .root-row button { padding: 0; font-size: 18px; }
-    pre { margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 14px; background: #15181c; color: #e7eaf0; border-radius: 6px; font: 12px/1.55 Consolas, monospace; white-space: pre-wrap; }
-    .message { min-height: 22px; margin-top: 10px; color: #1769aa; font-size: 13px; }
-    .message.success { color: #176c3a; }
-    .message.warning { color: #8b570d; }
-    .message.error { color: #a12622; }
+    pre { margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 16px; background: #15181c; color: #e7eaf0; border-radius: 10px; font: 12px/1.6 Consolas, monospace; white-space: pre-wrap; }
+    .message { min-height: 22px; margin-top: 12px; color: var(--brand); font-size: 13px; }
+    .message.success { color: var(--ok); }
+    .message.warning { color: var(--warn); }
+    .message.error { color: var(--err); }
+
+    /* ==== 云端连接大卡片 ==== */
+    .cloud-hero {
+      margin-top: 4px; background: linear-gradient(135deg, var(--surface), var(--brand-soft));
+      border: 1px solid var(--border); border-radius: 16px; padding: 24px 26px;
+      display: flex; align-items: center; justify-content: space-between; gap: 20px;
+      box-shadow: var(--shadow);
+    }
+    .cloud-hero-left { display: flex; align-items: center; gap: 18px; min-width: 0; }
+    .cloud-hero-icon {
+      width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center;
+      font-size: 26px; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0;
+      box-shadow: var(--shadow);
+    }
+    .cloud-hero-icon.state-pass { background: var(--ok-soft); border-color: transparent; }
+    .cloud-hero-icon.state-warning { background: var(--warn-soft); border-color: transparent; }
+    .cloud-hero-icon.state-error { background: var(--err-soft); border-color: transparent; }
+    .cloud-hero-title { font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .cloud-hero-subtitle { margin-top: 4px; color: var(--text-2); font-size: 13px; max-width: 620px; }
+    .cloud-hero-right { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+
+    /* ==== 绑定引导步骤 ==== */
+    .claim-guide { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .claim-guide h2 { display: flex; align-items: center; gap: 8px; }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+    .step {
+      border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+      background: var(--surface); display: grid; gap: 6px; position: relative;
+    }
+    .step-num {
+      width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--surface-2); color: var(--text-2); font-size: 13px; font-weight: 700;
+    }
+    .step.active .step-num { background: var(--brand); color: #fff; box-shadow: 0 2px 8px rgba(37, 99, 235, .35); }
+    .step.done .step-num { background: var(--ok); color: #fff; }
+    .step-title { font-weight: 650; font-size: 14px; }
+    .step-desc { color: var(--text-2); font-size: 12.5px; }
+    .claim-progress { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--brand-soft); color: var(--brand-strong); font-size: 13px; display: none; }
+    .claim-progress.spinning { display: block; }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px;
+      border: 2px solid color-mix(in srgb, var(--brand) 30%, transparent); border-top-color: var(--brand);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ==== 指标 ==== */
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); margin-top: 16px; }
+    .metric { padding: 16px 18px; border-left: 1px solid var(--border); }
+    .metric:first-child { border-left: 0; }
+    .metric-label { color: var(--text-2); font-size: 12px; font-weight: 500; }
+    .metric-value { margin-top: 6px; font-size: 19px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     @media (prefers-color-scheme: dark) {
-      :root, body { background: #17191c; color: #edf0f3; }
-      aside { background: #202328; border-color: #343941; }
-      header, .section, .metrics { background: #202328; border-color: #363b43; }
-      .metric { border-color: #363b43; }
-      input, select, button { background: #282c32; color: #edf0f3; border-color: #484f59; }
-      nav button.active { background: #273f54; color: #9bc9ef; }
-      th, td { border-color: #373c44; }
-      .badge { background: #343a42; }
-      .badge.pass { background: #1f4932; color: #a9e7bf; }
-      .badge.warning { background: #55401d; color: #ffd48b; }
-      .badge.error { background: #562828; color: #ffb2ae; }
-      .message.success { color: #8ed4a8; }
-      .message.warning { color: #ffd48b; }
-      .message.error { color: #ff9d98; }
+      pre { background: #0d1014; }
     }
   </style>
 </head>
@@ -94,28 +196,67 @@
   <aside>
     <div class="brand"><span class="brand-mark">H</span><span>Hanako Bridge</span></div>
     <nav>
-      <button class="active" data-page="overview">运行概览</button>
-      <button data-page="diagnostics">诊断与修复</button>
-      <button data-page="files">本地目录</button>
-      <button data-page="logs">日志</button>
-      <button data-page="settings">设置</button>
+      <button class="active" data-page="overview"><span class="nav-icon">◉</span>运行概览</button>
+      <button data-page="diagnostics"><span class="nav-icon">⚕</span>诊断与修复</button>
+      <button data-page="files"><span class="nav-icon">▤</span>本地目录</button>
+      <button data-page="logs"><span class="nav-icon">≣</span>日志</button>
+      <button data-page="settings"><span class="nav-icon">⚙</span>设置</button>
     </nav>
   </aside>
   <main>
     <header>
-      <span class="header-title" id="header-device">正在检测...</span>
+      <span class="header-title" id="header-device"><span id="header-device-name">正在检测...</span><span class="device-chip" id="header-device-id"></span></span>
       <span class="status"><span class="dot" id="header-dot"></span><span id="header-status">检测中</span></span>
     </header>
 
     <section class="page active" id="page-overview">
       <h1>运行概览</h1>
-      <p class="subtitle">本机 Rust 服务、云端连接和后台任务的实时状态。</p>
+      <p class="subtitle">本机服务、云端连接和后台任务的实时状态。</p>
+
+      <!-- 云端连接大卡片 -->
+      <div class="cloud-hero">
+        <div class="cloud-hero-left">
+          <div class="cloud-hero-icon" id="cloud-hero-icon">☁</div>
+          <div>
+            <div class="cloud-hero-title"><span id="cloud-hero-status">检测中...</span><span class="badge" id="cloud-hero-badge" hidden></span></div>
+            <div class="cloud-hero-subtitle" id="cloud-hero-subtitle">正在获取云端连接状态...</div>
+          </div>
+        </div>
+        <div class="cloud-hero-right">
+          <button class="primary big" id="claim-button" hidden>绑定设备</button>
+        </div>
+      </div>
+
+      <!-- 绑定引导（等待绑定时显示） -->
+      <div class="claim-guide" id="claim-guide" hidden>
+        <h2>🔗 把本机连接到你的 Hana 账号</h2>
+        <div class="steps">
+          <div class="step active" id="step-1">
+            <span class="step-num">1</span>
+            <span class="step-title">打开认领页</span>
+            <span class="step-desc">点击“绑定设备”，浏览器会自动打开 Hana 认领页。</span>
+          </div>
+          <div class="step" id="step-2">
+            <span class="step-num">2</span>
+            <span class="step-title">登录 Hana</span>
+            <span class="step-desc">在打开的网页中登录你的 Hana 账号。</span>
+          </div>
+          <div class="step" id="step-3">
+            <span class="step-num">3</span>
+            <span class="step-title">自动完成绑定</span>
+            <span class="step-desc">登录后本机自动完成绑定，无需其他操作。</span>
+          </div>
+        </div>
+        <div class="claim-progress" id="claim-progress"><span class="spinner"></span><span id="claim-progress-text">正在等待你在网页中完成登录和绑定...</span></div>
+      </div>
+
       <div class="metrics">
         <div class="metric"><div class="metric-label">本地 MCP</div><div class="metric-value" id="metric-mcp">-</div></div>
         <div class="metric"><div class="metric-label">云端连接</div><div class="metric-value" id="metric-cloud">-</div></div>
         <div class="metric"><div class="metric-label">后台任务</div><div class="metric-value" id="metric-task">-</div></div>
         <div class="metric"><div class="metric-label">版本</div><div class="metric-value" id="metric-version">-</div></div>
       </div>
+
       <div class="section">
         <h2>本机信息</h2>
         <dl class="kv">
@@ -140,7 +281,6 @@
           <button class="primary" data-action="repair">检测并修复</button>
           <button data-action="restart">重启服务</button>
           <button class="danger" data-action="stop">停止服务</button>
-          <button class="primary" id="claim-button" hidden>绑定设备</button>
         </div>
         <div class="message" id="diagnostic-message"></div>
       </div>
@@ -213,9 +353,27 @@ const CLOUD_STATUS_TEXT = Object.freeze({
   pending_claim: "等待绑定",
   connecting: "正在连接",
   authenticating: "正在验证",
-  offline: "离线",
+  offline: "未连接",
   disabled: "已停用",
   error: "连接异常"
+});
+const CLOUD_STATUS_SUBTITLE = Object.freeze({
+  active: "云端可以访问本机的文件与执行能力。",
+  pending_claim: "本机已连上云端，绑定后云端就能访问本机文件。",
+  connecting: "正在建立与云端的连接，请稍候...",
+  authenticating: "正在验证设备身份...",
+  offline: "尚未连接云端。如果刚刚安装，请检查网络后点击“检测并修复”。",
+  disabled: "云端连接已在设置中停用。",
+  error: "云端连接出现异常，可查看诊断详情。"
+});
+const CLOUD_HERO_ICON = Object.freeze({
+  active: "✅",
+  pending_claim: "🔗",
+  connecting: "🔄",
+  authenticating: "🛡",
+  offline: "⚠",
+  disabled: "⏸",
+  error: "⚠"
 });
 const TRUST_MODE_TEXT = Object.freeze({
   full: "完全信任",
@@ -267,7 +425,7 @@ async function api(path, options = {}) {
 function text(id, value) { document.getElementById(id).textContent = value ?? "-"; }
 function esc(value) { return String(value ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch])); }
 function displayText(map, value, fallback = "未知") { return map[value] || fallback; }
-function cloudStatusText(value) { return displayText(CLOUD_STATUS_TEXT, value, value || "离线"); }
+function cloudStatusText(value) { return displayText(CLOUD_STATUS_TEXT, value, value || "未连接"); }
 function trustModeText(value) { return displayText(TRUST_MODE_TEXT, value, value || "未知"); }
 function checkNameText(value) { return displayText(CHECK_NAME_TEXT, value, value || "未知检查项"); }
 function checkStatusText(value) { return displayText(CHECK_STATUS_TEXT, value, value || "未知"); }
@@ -313,8 +471,33 @@ function setHeaderStatus(value, state) {
   text("header-status", value);
   document.getElementById("header-dot").className = `dot ${state}`;
 }
-function cloudRecoveryComplete(status) {
-  return ["active", "pending_claim", "disabled"].includes(status);
+
+function renderCloudHero(cloudStatus) {
+  const status = cloudStatus || "offline";
+  const icon = document.getElementById("cloud-hero-icon");
+  icon.textContent = CLOUD_HERO_ICON[status] || "☁";
+  const stateClass = status === "active" || status === "disabled" ? "state-pass"
+    : status === "pending_claim" || status === "connecting" || status === "authenticating" ? "state-warning"
+    : "state-error";
+  icon.className = `cloud-hero-icon ${stateClass}`;
+  text("cloud-hero-status", cloudStatusText(status));
+  const badge = document.getElementById("cloud-hero-badge");
+  if (status === "active") {
+    badge.hidden = false;
+    badge.className = "badge pass";
+    badge.textContent = "在线";
+  } else if (status === "pending_claim") {
+    badge.hidden = false;
+    badge.className = "badge warning";
+    badge.textContent = "待绑定";
+  } else {
+    badge.hidden = true;
+  }
+  text("cloud-hero-subtitle", CLOUD_STATUS_SUBTITLE[status] || "正在获取云端连接状态...");
+  updateClaimButton(status);
+  const guide = document.getElementById("claim-guide");
+  guide.hidden = status !== "pending_claim";
+  if (status !== "pending_claim") hideClaimProgress();
 }
 
 function render(data) {
@@ -324,7 +507,8 @@ function render(data) {
     : data.overall === "warning"
       ? { text: "正在恢复或需要关注", state: "warning" }
       : { text: "需要处理", state: "error" };
-  text("header-device", `${data.device.name} · ${data.device.id}`);
+  text("header-device-name", data.device.name);
+  text("header-device-id", data.device.id);
   setHeaderStatus(header.text, header.state);
   text("metric-mcp", data.service.healthOk ? "在线" : "离线");
   text("metric-cloud", cloudStatusText(data.cloud.status));
@@ -345,17 +529,21 @@ function render(data) {
   document.getElementById("check-rows").innerHTML = data.checks.map(item => `<tr><td>${esc(checkNameText(item.code))}</td><td><span class="badge ${checkStatusClass(item.status)}">${esc(checkStatusText(item.status))}</span></td><td>${esc(checkDetailText(item))}</td></tr>`).join("");
   document.getElementById("root-rows").innerHTML = data.local.roots.map(root => `<tr><td>local://${esc(root.id)}</td><td>${esc(root.path)}</td><td>${esc(rootModeText(root.mode))}</td><td>${esc(rootSourceText(root.source))}</td></tr>`).join("");
   fillSettings(data.settings);
-  updateClaimButton(data.cloud?.status);
+  renderCloudHero(data.cloud?.status);
 }
 
-// The "绑定设备" button only makes sense while the device is waiting to be
-// claimed. Show it on pending_claim, hide it once active (or when cloud is
-// disabled/unknown), so it does not clutter the panel when there is nothing to
-// bind.
 function updateClaimButton(cloudStatus) {
   const button = document.getElementById("claim-button");
   if (!button) return;
   button.hidden = cloudStatus !== "pending_claim";
+}
+
+function showClaimProgress(message) {
+  document.getElementById("claim-progress").classList.add("spinning");
+  text("claim-progress-text", message);
+}
+function hideClaimProgress() {
+  document.getElementById("claim-progress").classList.remove("spinning");
 }
 
 function fillSettings(settings) {
@@ -432,6 +620,9 @@ async function waitForServiceRecovery(action, messageId = "diagnostic-message") 
   } finally {
     if (generation === recoveryGeneration) recoveryInProgress = false;
   }
+}
+function cloudRecoveryComplete(status) {
+  return ["active", "pending_claim", "disabled"].includes(status);
 }
 
 async function loadLogs() {
@@ -536,9 +727,11 @@ document.getElementById("claim-button").onclick = async () => {
   try {
     await api("/api/manager/open-claim", { method: "POST" });
     setMessage("diagnostic-message", "已在浏览器打开认领页，请用 Hana 账号登录完成绑定。", "warning");
+    showClaimProgress("已打开认领页。请在网页中登录 Hana，绑定将自动完成...");
     pollForClaim();
   } catch (error) {
     setMessage("diagnostic-message", friendlyError(error), "error");
+    hideClaimProgress();
   } finally {
     button.disabled = false;
   }
@@ -550,7 +743,7 @@ document.getElementById("claim-button").onclick = async () => {
 let claimPollGeneration = 0;
 async function pollForClaim() {
   const generation = ++claimPollGeneration;
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 24; attempt++) {
     await delay(5000);
     if (generation !== claimPollGeneration) return;
     let data;
@@ -558,10 +751,16 @@ async function pollForClaim() {
     catch { continue; }
     render(data);
     if (data.cloud?.status === "active") {
+      hideClaimProgress();
       setMessage("diagnostic-message", "设备已绑定，云端连接正常。", "success");
       return;
     }
+    if (attempt % 6 === 3) {
+      showClaimProgress("仍在等待绑定。请在打开的网页中登录 Hana 账号...");
+    }
   }
+  hideClaimProgress();
+  setMessage("diagnostic-message", "绑定等待超时。如果网页已完成登录，请点击“立即检测”刷新状态。", "warning");
 }
 document.getElementById("settings-form").onsubmit = async event => {
   event.preventDefault();
