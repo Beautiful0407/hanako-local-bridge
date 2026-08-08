@@ -1,6 +1,7 @@
 ---
 name: hanako-local-bridge-dev
-description: "开发和维护 Beautiful0407/hanako-local-bridge 的 Hanako Local Bridge MCP。用于继续开发本地文件读写、图片读取、PowerShell/Python 执行、Windows Rust Bridge、WebView2 托盘管理器、签名更新器、内嵌安装器、云端 WebSocket、Linux Device Router、多设备路由、自动恢复和在线更新；也用于诊断本地 MCP 不可用、窗口弹出、托盘异常、设备离线、更新失败、安装覆盖失败，执行测试、打包、GitHub Release、VPS Alpha feed 发布、回滚和开发文档维护。触发词包括：继续开发文件桥、修改 MCP、修复 Hanako Local Bridge、增加本地工具、打包安装器、发布新版、在线更新、云端设备路由、维护开发手册。"
+description: "开发和维护 Beautiful0407/hanako--MCP- 的 Hanako Local Bridge MCP。用于继续开发本地文件读写、图片读取、PowerShell/Python 执行、Windows Rust Bridge、WebView2 托盘管理器、签名更新器、内嵌安装器、云端 WebSocket、Linux Device Router、多设备路由、自动恢复和在线更新；也用于诊断本地 MCP 不可用、窗口弹出、托盘异常、设备离线、更新失败、安装覆盖失败，执行测试、打包、GitHub Release、VPS Alpha feed 发布、回滚和开发文档维护。触发词包括：继续开发文件桥、修改 MCP、修复 Hanako Local Bridge、增加本地工具、打包安装器、发布新版、在线更新、云端设备路由、维护开发手册。"
+group: Hanako 项目
 ---
 
 # Hanako Local Bridge Development
@@ -13,8 +14,13 @@ description: "开发和维护 Beautiful0407/hanako-local-bridge 的 Hanako Local
 默认仓库：
 
 ```text
-C:\Users\<YourName>\Documents\hanako 开发\hanako-mcp-publish-20260717
+C:\Users\30456\AppData\Roaming\reasonix\global-workspace\hanako-local-bridge
 ```
+
+GitHub: `https://github.com/Beautiful0407/hanako-local-bridge`（main）
+
+> 旧路径 `C:\Users\30456\Documents\hanako 开发\hanako-mcp-publish-20260717` 已废弃；
+> `D:\hlb-alpha22-src` 是历史快照，不要作为开发仓库。
 
 仓库源码中的 Skill：
 
@@ -25,7 +31,7 @@ codex-skills\hanako-local-bridge-dev
 本机安装副本：
 
 ```text
-C:\Users\<YourName>\.codex\skills\hanako-local-bridge-dev
+C:\Users\30456\.codex\skills\hanako-local-bridge-dev
 ```
 
 不要把本 Skill 放进 HanaAgent 的 `skills2set/`，也不要上传到 VPS 的
@@ -117,8 +123,8 @@ config.json SHA256 未变化
 - 本地接口只监听 loopback。不要把 approval token、设备私钥、claim token、登录密钥、
   签名私钥或完整生产日志写入 Git、诊断输出或开发手册。
 - 不要手工把 `target\release` 中的 EXE 覆盖到正式安装目录。使用内嵌安装器或签名更新。
-- PowerShell 脚本使用 `powershell.exe -ExecutionPolicy Bypass -File`；Rust 集成测试
-  直接用 `node tests\rust-*.cjs` 运行，不要用 npm 脚本。
+- PowerShell 脚本使用 `powershell.exe -ExecutionPolicy Bypass -File`；Node 命令优先
+  使用 `npm.cmd`/`npx.cmd`，避免本机执行策略拦截 `.ps1` shim。
 
 ## Change Workflow
 
@@ -180,4 +186,5 @@ config.json SHA256 未变化
 - [architecture.md](references/architecture.md)：模块、数据、协议和所有权边界。
 - [development-manual.md](references/development-manual.md)：日常开发、调试、测试和维护。
 - [release-runbook.md](references/release-runbook.md)：签名构建、发布、VPS、升级和回滚。
+  发布前先读文末 [Release Field Notes](#release-field-notes-204-2026-08-09)（2.0.4 实战踩坑）。
 - [repo-snapshot.md](references/repo-snapshot.md)：脚本生成的当前版本、提交和运行时快照。

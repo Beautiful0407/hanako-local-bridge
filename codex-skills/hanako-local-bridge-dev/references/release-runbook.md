@@ -1,5 +1,9 @@
 # Hanako Local Bridge Release Runbook
 
+> Practical lessons from the 2.0.4 release (2026-08-09) are at the bottom:
+> [Release Field Notes](#release-field-notes-204-2026-08-09). Read them before
+> running a release; they prevent the most common rework.
+
 ## Contents
 
 1. Scope and safety
@@ -51,7 +55,7 @@ Confirm:
 - next version is unused;
 - previous package needed by update smoke still exists;
 - signing key file exists;
-- Rust/MSVC toolchain works;
+- Rust/MSVC/Node toolchains work;
 - VPS SSH identity proves the expected hostname and user before writes.
 
 Signing key location:
@@ -73,7 +77,10 @@ tests that assert current version
 installer/update smoke source and target versions
 CHANGELOG.md
 README.md
+DEVELOPMENT_MANUAL.md
+OPERATION_MANUAL.md
 RUST_MIGRATION.md
+WINDOWS_INSTALLER_UPDATE_MANUAL.md
 CLOUD_DEPLOYMENT_GUIDE.md
 ```
 
@@ -93,7 +100,7 @@ node tests\rust-recovery.test.cjs
 node tests\rust-device-router.test.cjs
 ```
 
-Run the workspace and integration tests when migration or shared config behavior changes.
+Run affected legacy tests when migration or shared config behavior changes.
 
 ## Signed Package And Installer
 
@@ -207,7 +214,7 @@ gh release create "v$version" `
   (Join-Path $out $package) `
   (Join-Path $out $installer) `
   (Join-Path $out 'update-manifest.json') `
-  --repo Beautiful0407/hanako-local-bridge `
+  --repo Beautiful0407/hanako--MCP- `
   --title "Hanako Local Bridge $version" `
   --prerelease `
   --notes "<tested release notes>"
@@ -221,7 +228,7 @@ returned a URL.
 First prove the host:
 
 ```powershell
-ssh -o BatchMode=yes -o ConnectTimeout=10 root@YOUR_SERVER_IP `
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@154.201.69.202 `
   "hostname; whoami; systemctl is-active hanako-server.service"
 ```
 
@@ -341,3 +348,101 @@ Include:
 - remaining caveats.
 
 Never include credentials or token contents.
+
+---
+
+## Release Field Notes (2.0.4, 2026-08-09)
+
+Real lessons from publishing v2.0.4. These cost ~14 minutes of avoidable rework;
+apply them to every future release.
+
+### 1. PowerShell script pitfalls (the biggest time sink)
+
+Running release scripts through Git Bash + `powershell.exe -File` breaks on:
+
+- `$_` and `$var:` inside `-Command` strings: bash eats `$`. Always write a
+  `.ps1` file and run it with `-File`, never inline `-Command` with `$`.
+- `"$version: ..."` inside double quotes: PowerShell parses `$version:` as a
+  drive reference. Use `"${version}: ..."`.
+- `cargo ... 2>&1 | Select-Object` inside a script with
+  `$ErrorActionPreference = 'Stop'`: cargo writes progress to stderr, PowerShell
+  treats it as a native error and aborts mid-build. Use
+  `$ErrorActionPreference = 'Continue'`, redirect to a file, then check
+  `$LASTEXITCODE`.
+- Piping cargo output to `Select-Object -Last N` can truncate the pipe and kill
+  the child build early. Redirect to a temp file instead, then tail it.
+
+### 2. channel must match the feed
+
+`hanako-maintenance.exe pack --channel` controls the manifest `channel` field.
+An alpha-feed manifest with `channel: stable` looks wrong and fails feed
+discipline. Decide the feed first:
+
+```powershell
+# alpha feed:
+--channel 'alpha'
+# stable feed:
+--channel 'stable'
+```
+
+If you publish with the wrong channel, the ZIP and installer do NOT need
+rebuilding (identical bytes, same hash) - only re-pack the manifest with the
+right channel and atomically replace it on the VPS.
+
+### 3. Test assertions drift with tool count
+
+`tests/rust-integration.test.cjs` and `tests/rust-device-router.test.cjs` used
+to hardcode `tools.size == 33` / `== 36`. After nuphus tools and append_base64
+the real count is ~76. These failed during the quality gate. Fix: assert
+`>= 60` plus presence of specific tools, not exact counts. Before a release,
+grep tests for hardcoded numbers that may have drifted:
+
+```powershell
+rg -n "assert\.(equal|strictEqual).*tools" tests/
+```
+
+### 4. Installer smoke needs HANA_SMOKE_PAYLOAD
+
+`rust-installer-smoke.ps1` requires `HANA_SMOKE_PAYLOAD` (the signed ZIP
+path), not just `HANA_SMOKE_INSTALLER`/`HANA_SMOKE_PREVIOUS_PACKAGE`. Missing
+it fails at "artifact validation" with a confusing empty-LiteralPath error.
+Set all five env vars:
+
+```powershell
+$env:HANA_SMOKE_INSTALLER       # new installer exe
+$env:HANA_SMOKE_PAYLOAD         # new signed zip
+$env:HANA_SMOKE_PREVIOUS_PACKAGE # previous version zip (update smoke start)
+$env:HANA_SMOKE_PREVIOUS_VERSION # e.g. 2.0.3
+$env:HANA_SMOKE_NEW_VERSION      # e.g. 2.0.4
+$env:HANA_SMOKE_NEW_MANIFEST     # new manifest path
+```
+
+### 5. pack needs assets in the binaries root
+
+`hanako-maintenance.exe pack` requires
+`<binaries>/assets/hanako-local-bridge.ico` (the manifest lists it as a
+payload file). Before packing:
+
+```powershell
+Copy-Item assets/hanako-local-bridge.ico target/release/assets/
+```
+
+### 6. FMT may fail on pre-existing files
+
+`cargo fmt --all -- --check` can fail on files unrelated to your change
+(e.g. `crates/nuphus-mcp-core/tests/smoke.rs`). Running `cargo fmt --all`
+fixes them - safe, it only reformats. Then `git add` the reformatted file
+with the release commit.
+
+### 7. Fixed expectedVersion defaults in tests
+
+`tests/rust-integration.test.cjs` defaulted `HANAKO_RUST_EXPECTED_VERSION` to
+an ancient `2.0.0-alpha.15`. Update the default to the current workspace
+version when bumping, or export the env var when running tests.
+
+### 8. Consider a one-shot release script
+
+The manual sequence (build -> pack -> installer -> smoke -> tag -> gh release
+-> VPS -> local update) is ~45 min with ~14 min of avoidable rework. A
+parameterized `release.ps1` (version, channel) would cut that to ~25 min.
+When writing it, follow the pitfalls above. Do not skip the smoke tests.
