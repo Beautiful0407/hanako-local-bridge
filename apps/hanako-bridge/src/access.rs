@@ -323,6 +323,65 @@ impl AccessController {
         }))
     }
 
+    /// Explicitly grants access to a directory (used by local_fs.roots_add).
+    /// Persists immediately and refreshes the resolver; unlike full-trust
+    /// request_access this is an explicit, durable grant.
+    pub async fn add_grant(
+        &self,
+        name: Option<&str>,
+        path: PathBuf,
+        mode: RootMode,
+    ) -> BridgeResult<AccessGrant> {
+        let metadata = tokio::fs::metadata(&path).await.map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                BridgeError::tool("path_not_found", "granted path does not exist")
+            } else {
+                BridgeError::tool("path_stat_failed", error.to_string())
+            }
+        })?;
+        if !metadata.is_dir() {
+            return Err(BridgeError::tool(
+                "directory_required",
+                "access can only be granted for a directory",
+            ));
+        }
+        let path_key = path
+            .to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase();
+        let mut grants = self.grants.lock().await;
+        let duplicate = grants.grants.iter().any(|grant| {
+            grant_active(grant)
+                && grant
+                    .path
+                    .to_string_lossy()
+                    .replace('/', "\\")
+                    .trim_end_matches('\\')
+                    .to_ascii_lowercase()
+                    == path_key
+        });
+        if duplicate {
+            return Err(BridgeError::tool(
+                "grant_already_exists",
+                "an active grant already covers this path",
+            ));
+        }
+        let grant = self.create_grant(name, path, mode, "manual", None);
+        grants.grants.push(grant.clone());
+        write_json_atomic(&self.grant_file, &*grants)?;
+        drop(grants);
+        self.refresh_resolver().await;
+        self.audit(json!({
+            "action": "access_granted",
+            "grantId": &grant.id,
+            "path": &grant.path,
+            "mode": grant.mode
+        }))
+        .await;
+        Ok(grant)
+    }
+
     pub async fn access_status(&self, id: &str) -> BridgeResult<Value> {
         let request = self
             .requests

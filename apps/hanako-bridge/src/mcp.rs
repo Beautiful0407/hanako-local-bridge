@@ -12,6 +12,7 @@ use futures_util::future::BoxFuture;
 use globset::{Glob, GlobMatcher};
 use hanako_bridge_core::{
     BridgeError,
+    config::RootMode,
     path::{AccessMode, ResolvedPath, public_path},
 };
 use serde::Deserialize;
@@ -396,6 +397,27 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             "Permanently delete all items in the .hana-trash directory associated with a path. This cannot be undone.",
             json!({"path": { "type": "string" }}),
             &["path"],
+        ),
+        tool(
+            "local_fs.roots_add",
+            "Grant access to a local directory",
+            "Explicitly grant the bridge access to an existing directory, persisting the grant immediately. Duplicate active grants for the same path are rejected.",
+            json!({
+                "path": { "type": "string" },
+                "mode": { "type": "string", "enum": ["read", "read_write"] },
+                "name": { "type": "string" }
+            }),
+            &["path"],
+        ),
+        tool(
+            "local_fs.roots_remove",
+            "Revoke access to a local directory",
+            "Revoke an active access grant by grant id or by path. Bootstrap grants cannot be revoked.",
+            json!({
+                "id": { "type": "string" },
+                "path": { "type": "string" }
+            }),
+            &[],
         ),
         execution_tool(
             state,
@@ -806,6 +828,8 @@ fn call_file_tool<'a>(
             "local_fs.trash_list" => trash_list(state, arguments).await,
             "local_fs.trash_restore" => trash_restore(state, arguments).await,
             "local_fs.trash_clear" => trash_clear(state, arguments).await,
+            "local_fs.roots_add" => roots_add(state, arguments).await,
+            "local_fs.roots_remove" => roots_remove(state, arguments).await,
             _ => Err(BridgeError::tool(
                 "unknown_tool",
                 format!("unknown tool: {name}"),
@@ -2267,6 +2291,71 @@ async fn trash_clear(state: &AppState, arguments: &Value) -> Result<Value, Bridg
     Ok(content_json(json!({
         "path": trash_root,
         "cleared": removed
+    })))
+}
+
+async fn roots_add(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let path_input = argument_string(arguments, "path", "path_required")?;
+    let path = PathBuf::from(path_input);
+    let mode = match arguments
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("read")
+    {
+        "read_write" => RootMode::ReadWrite,
+        _ => RootMode::Read,
+    };
+    let name = arguments.get("name").and_then(Value::as_str);
+    let grant = state.access.add_grant(name, path.clone(), mode).await?;
+    Ok(content_json(json!({
+        "grantId": grant.id,
+        "name": grant.name,
+        "path": grant.path,
+        "mode": if grant.mode == RootMode::ReadWrite { "read_write" } else { "read" },
+        "source": grant.source
+    })))
+}
+
+async fn roots_remove(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let id = arguments.get("id").and_then(Value::as_str);
+    let path_input = arguments.get("path").and_then(Value::as_str);
+    let grant_id = match (id, path_input) {
+        (Some(id), _) if !id.is_empty() => id.to_string(),
+        (_, Some(path)) if !path.is_empty() => {
+            // Find an active grant whose path matches.
+            let path_key = path
+                .replace('/', "\\")
+                .trim_end_matches('\\')
+                .to_ascii_lowercase();
+            let grants = state.access.list_grants().await;
+            grants
+                .iter()
+                .find(|grant| {
+                    grant
+                        .path
+                        .to_string_lossy()
+                        .replace('/', "\\")
+                        .trim_end_matches('\\')
+                        .to_ascii_lowercase()
+                        == path_key
+                })
+                .map(|grant| grant.id.clone())
+                .ok_or_else(|| {
+                    BridgeError::tool("grant_not_found", "no active grant matches the given path")
+                })?
+        }
+        _ => {
+            return Err(BridgeError::tool(
+                "grant_identifier_required",
+                "provide id or path",
+            ));
+        }
+    };
+    let revoked = state.access.revoke_grant(&grant_id).await?;
+    Ok(content_json(json!({
+        "revoked": revoked.id,
+        "path": revoked.path,
+        "mode": if revoked.mode == RootMode::ReadWrite { "read_write" } else { "read" }
     })))
 }
 
