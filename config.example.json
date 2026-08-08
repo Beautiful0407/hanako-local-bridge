@@ -9,8 +9,6 @@
     "port": 8787,
     "approvalPort": 8788,
     "trustMode": "full",
-    "allowChatAuthorization": false,
-    "chatGrantMinutes": 120,
     "roots": [
       {
         "name": "MyFiles",
@@ -30,27 +28,7 @@
   },
   "cloud": {
     "enabled": true,
-    "url": "wss://your-server.example.com/local-bridge/connect",
-    "reconnectMinSeconds": 3,
-    "reconnectMaxSeconds": 60,
-    "heartbeatSeconds": 25
-  },
-  "tunnel": {
-    "enabled": false,
-    "server": "YOUR_SERVER_IP",
-    "user": "root",
-    "localHost": "127.0.0.1",
-    "localPort": 8787,
-    "remoteHost": "127.0.0.1",
-    "remotePort": 18787,
-    "identityFile": ""
-  },
-  "service": {
-    "taskPrefix": "Hanako Local FS",
-    "restartDelaySeconds": 3,
-    "tunnelRetryMinSeconds": 5,
-    "tunnelRetryMaxSeconds": 60,
-    "tunnelHealthSeconds": 30
+    "url": "wss://your-server.example.com/local-bridge/connect"
   },
   "update": {
     "manifest": "https://your-server.example.com/local-bridge/releases/update-manifest.json",

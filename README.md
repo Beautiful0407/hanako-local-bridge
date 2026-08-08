@@ -78,15 +78,14 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-insta
     "enabled": true,
     "url": "wss://your-server.example.com/local-bridge/connect"
   },
-  "tunnel": {
-    "server": "YOUR_SERVER_IP",
-    "user": "root"
-  },
   "update": {
-    "manifest": "https://your-server.example.com/local-bridge/releases/update-manifest.json"
+    "manifest": "https://your-server.example.com/local-bridge/releases/update-manifest.json",
+    "channel": "stable"
   }
 }
 ```
+
+未填写的字段（`tunnel`、`service`、`storage`、重连/心跳参数等）会自动使用内置默认值；`tunnel` 仅为旧版 SSH 反向隧道兼容保留，新部署无需配置。
 
 ### 安装为 Windows 后台服务
 
