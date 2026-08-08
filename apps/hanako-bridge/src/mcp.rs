@@ -360,6 +360,18 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             }),
             &["operations"],
         ),
+        tool(
+            "local_fs.history",
+            "Query local file operation history",
+            "Return recent file operation audit events (most recent first). Optionally filter by tool name, success state, or a start timestamp. Events include the tool, ok, durationMs, and touched paths when available.",
+            json!({
+                "tool": { "type": "string" },
+                "ok": { "type": "boolean" },
+                "since": { "type": "string" },
+                "limit": { "type": "number" }
+            }),
+            &[],
+        ),
         execution_tool(
             state,
             "local_exec.runtimes",
@@ -565,8 +577,9 @@ async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
                 .unwrap_or_else(|| json!({}));
             let started = Instant::now();
             state.record_tool_call(name);
+            let audit_paths = audit_paths_for(name, &arguments);
             let result = call_tool(&state, name, &arguments).await;
-            let audit = match &result {
+            let mut audit = match &result {
                 Ok(_) => json!({
                     "kind": "mcp_tool_call",
                     "tool": name,
@@ -581,6 +594,9 @@ async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
                     "durationMs": started.elapsed().as_millis()
                 }),
             };
+            if let Some(paths) = audit_paths {
+                audit["paths"] = Value::Array(paths);
+            }
             state.audit_mcp(audit).await;
             result
         }
@@ -604,6 +620,30 @@ fn argument_path(arguments: &Value) -> Result<&str, BridgeError> {
         .and_then(Value::as_str)
         .filter(|path| !path.trim().is_empty())
         .ok_or_else(|| BridgeError::tool("path_required", "path is required"))
+}
+
+/// Extracts the paths touched by a file-operation tool call for audit.
+/// Returns `None` for tools without path semantics (execution, nuphus).
+fn audit_paths_for(name: &str, arguments: &Value) -> Option<Vec<Value>> {
+    let mut paths = Vec::new();
+    for key in ["path", "source", "destination"] {
+        if let Some(value) = arguments.get(key).and_then(Value::as_str) {
+            paths.push(Value::String(value.to_string()));
+        }
+    }
+    if paths.is_empty() {
+        // batch operations embed paths inside the operations array
+        if let Some(operations) = arguments.get("operations").and_then(Value::as_array) {
+            for op in operations {
+                for key in ["source", "destination"] {
+                    if let Some(value) = op.get(key).and_then(Value::as_str) {
+                        paths.push(Value::String(value.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    if paths.is_empty() { None } else { Some(paths) }
 }
 
 async fn call_tool(state: &AppState, name: &str, arguments: &Value) -> Result<Value, BridgeError> {
@@ -737,6 +777,7 @@ fn call_file_tool<'a>(
             "local_fs.move" => copy_or_move(state, arguments, true).await,
             "local_fs.delete_to_trash" => delete_to_trash(state, arguments).await,
             "local_fs.batch" => run_batch(state, arguments).await,
+            "local_fs.history" => query_history(state, arguments).await,
             _ => Err(BridgeError::tool(
                 "unknown_tool",
                 format!("unknown tool: {name}"),
@@ -2298,6 +2339,75 @@ fn remove_path(path: &Path) -> Result<(), String> {
     } else {
         fs::remove_file(path).map_err(|error| error.to_string())
     }
+}
+
+/// Queries the MCP audit log (`logs/mcp-audit.jsonl`), newest first.
+///
+/// Filters by optional tool name, success state, and a since timestamp
+/// (RFC3339). Returns up to `limit` events. The log is a JSONL rotation
+/// file; only the current segment is read (history across rotation segments
+/// is intentionally bounded).
+async fn query_history(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    let tool_filter = arguments
+        .get("tool")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let ok_filter = arguments.get("ok").and_then(Value::as_bool);
+    let since_filter = arguments
+        .get("since")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            chrono::DateTime::parse_from_rfc3339(value)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|error| BridgeError::tool("invalid_since", error.to_string()))
+        })
+        .transpose()?;
+    let limit = argument_usize(arguments, "limit", 50, 1, 500);
+
+    let log_path = state.log_dir.join("mcp-audit.jsonl");
+    let text = tokio::fs::read_to_string(&log_path)
+        .await
+        .unwrap_or_default();
+    let mut events = Vec::new();
+    for line in text.lines().rev() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if let Some(tool) = tool_filter
+            && value.get("tool").and_then(Value::as_str) != Some(tool)
+        {
+            continue;
+        }
+        if let Some(expected_ok) = ok_filter
+            && value.get("ok").and_then(Value::as_bool) != Some(expected_ok)
+        {
+            continue;
+        }
+        if let Some(since) = since_filter {
+            let timestamp = value
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+                .map(|dt| dt.with_timezone(&chrono::Utc));
+            if timestamp.is_none_or(|ts| ts < since) {
+                continue;
+            }
+        }
+        events.push(value);
+        if events.len() >= limit {
+            break;
+        }
+    }
+    Ok(content_json(json!({
+        "events": events,
+        "count": events.len(),
+        "truncated": events.len() >= limit
+    })))
 }
 
 fn glob_matcher(pattern: Option<&str>) -> Result<Option<GlobMatcher>, BridgeError> {
