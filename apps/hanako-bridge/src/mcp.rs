@@ -285,6 +285,19 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
             &["path", "dataBase64"],
         ),
         tool(
+            "local_fs.append_base64",
+            "Append local binary data",
+            "Append base64-decoded bytes to a local file, creating it if missing. For large transfers, split the payload into multiple sequential calls; each call appends its chunk to the same path. Pass finalSha256 on the last chunk to verify the complete file, or expectedSha256 to verify the file as it exists before this append.",
+            json!({
+                "path": path_property["path"],
+                "dataBase64": { "type": "string" },
+                "expectedSha256": { "type": "string" },
+                "finalSha256": { "type": "string" },
+                "createParents": { "type": "boolean" }
+            }),
+            &["path", "dataBase64"],
+        ),
+        tool(
             "local_fs.mkdir",
             "Create a local directory",
             "Create a local directory and optionally its parents.",
@@ -694,6 +707,7 @@ fn call_file_tool<'a>(
             "local_fs.append_text" => append_text(state, arguments).await,
             "local_fs.apply_patch" => apply_patch(state, arguments).await,
             "local_fs.write_base64" => write_base64(state, arguments).await,
+            "local_fs.append_base64" => append_base64(state, arguments).await,
             "local_fs.mkdir" => create_directory(state, arguments).await,
             "local_fs.copy" => copy_or_move(state, arguments, false).await,
             "local_fs.move" => copy_or_move(state, arguments, true).await,
@@ -1582,6 +1596,123 @@ async fn write_base64(state: &AppState, arguments: &Value) -> Result<Value, Brid
             .unwrap_or(false),
     )
     .await?;
+    let final_resolved =
+        state
+            .resolver
+            .resolve(argument_path(arguments)?, AccessMode::ReadWrite, false)?;
+    Ok(content_json(stat_value(&final_resolved, true).await?))
+}
+
+/// Appends base64-decoded bytes to a local file, creating it if missing.
+///
+/// Designed for transferring large binary files in chunks: an agent that
+/// cannot reliably emit a whole base64 payload in one call splits it into
+/// several sequential `append_base64` calls against the same path. Each call
+/// appends only its own chunk, so the total wire traffic stays close to the
+/// file size (unlike rewriting the whole file per chunk). Use `finalSha256`
+/// on the last chunk to verify the complete assembled file.
+async fn append_base64(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
+    const MAX_APPEND_BYTES: usize = 64 * 1024 * 1024;
+    let raw = arguments
+        .get("dataBase64")
+        .and_then(Value::as_str)
+        .ok_or_else(|| BridgeError::tool("invalid_base64", "dataBase64 is required"))?;
+    let chunk = base64::engine::general_purpose::STANDARD
+        .decode(raw)
+        .map_err(|error| BridgeError::tool("invalid_base64", error.to_string()))?;
+    if chunk.len() > 4 * 1024 * 1024 {
+        return Err(BridgeError::tool(
+            "write_too_large",
+            "append chunk exceeds 4194304 byte limit",
+        ));
+    }
+    let resolved =
+        state
+            .resolver
+            .resolve(argument_path(arguments)?, AccessMode::ReadWrite, true)?;
+    let _guard = state.lock_path(&resolved.real).await;
+
+    let create_parents = arguments
+        .get("createParents")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if create_parents
+        && let Some(parent) = resolved.real.parent()
+        && !parent.as_os_str().is_empty()
+        && !parent.exists()
+    {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| BridgeError::tool("mkdir_failed", error.to_string()))?;
+    }
+
+    // Optional precondition: the file as it exists before this append.
+    if let Some(expected) = arguments.get("expectedSha256").and_then(Value::as_str) {
+        let actual = if resolved.real.exists() {
+            let bytes = tokio::fs::read(&resolved.real)
+                .await
+                .map_err(|error| BridgeError::tool("read_failed", error.to_string()))?;
+            format!("{:x}", Sha256::digest(&bytes))
+        } else {
+            String::new()
+        };
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(BridgeError::mismatch(
+                "sha256_mismatch",
+                "target changed since it was inspected",
+                expected,
+                actual,
+            ));
+        }
+    }
+
+    // Size guard: keep the whole assembled file bounded.
+    let existing_len = tokio::fs::metadata(&resolved.real)
+        .await
+        .map(|meta| meta.len() as usize)
+        .unwrap_or(0);
+    let final_len = existing_len
+        .checked_add(chunk.len())
+        .ok_or_else(|| BridgeError::tool("write_too_large", "file size overflow"))?;
+    if final_len > MAX_APPEND_BYTES {
+        return Err(BridgeError::tool(
+            "write_too_large",
+            "assembled file would exceed 67108864 byte limit",
+        ));
+    }
+
+    let mut options = tokio::fs::OpenOptions::new();
+    options.create(true).append(true);
+    {
+        let mut file = options
+            .open(&resolved.real)
+            .await
+            .map_err(|error| BridgeError::tool("open_failed", error.to_string()))?;
+        use tokio::io::AsyncWriteExt as _;
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| BridgeError::tool("append_failed", error.to_string()))?;
+        file.flush()
+            .await
+            .map_err(|error| BridgeError::tool("append_failed", error.to_string()))?;
+    }
+
+    // Optional postcondition: verify the complete assembled file.
+    if let Some(expected) = arguments.get("finalSha256").and_then(Value::as_str) {
+        let bytes = tokio::fs::read(&resolved.real)
+            .await
+            .map_err(|error| BridgeError::tool("read_failed", error.to_string()))?;
+        let actual = format!("{:x}", Sha256::digest(&bytes));
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(BridgeError::mismatch(
+                "sha256_mismatch",
+                "final sha256 does not match assembled file",
+                expected,
+                actual,
+            ));
+        }
+    }
+
     let final_resolved =
         state
             .resolver
