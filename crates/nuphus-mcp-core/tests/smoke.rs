@@ -4,21 +4,15 @@
 #[tokio::test]
 #[ignore]
 async fn desktop_tools_smoke() {
-    let size = nuphus_mcp_core::tools::execute(
-        "desktop_screen_size",
-        &serde_json::json!({}),
-    )
-    .await
-    .expect("execute");
+    let size = nuphus_mcp_core::tools::execute("desktop_screen_size", &serde_json::json!({}))
+        .await
+        .expect("execute");
     println!("screen_size: {}", size.text);
     assert!(!size.is_error, "screen_size failed: {}", size.text);
 
-    let windows = nuphus_mcp_core::tools::execute(
-        "desktop_windows_list",
-        &serde_json::json!({}),
-    )
-    .await
-    .expect("execute");
+    let windows = nuphus_mcp_core::tools::execute("desktop_windows_list", &serde_json::json!({}))
+        .await
+        .expect("execute");
     println!("windows_list: {}", windows.text);
     assert!(!windows.is_error, "windows_list failed: {}", windows.text);
 }

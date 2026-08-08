@@ -9,7 +9,7 @@ const projectDir = path.resolve(__dirname, "..");
 const bridgeExe =
   process.env.HANAKO_RUST_BRIDGE_EXE ||
   path.join(projectDir, "target", "debug", "hanako-bridge.exe");
-const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.0-alpha.15";
+const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.4";
 
 async function checkedFetch(label, url, options) {
   try {
@@ -171,11 +171,12 @@ async function run() {
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
     }).then((response) => response.json());
     const tools = new Map(toolsResponse.result.tools.map((tool) => [tool.name, tool]));
-    assert.equal(tools.size, 33);
+    assert.ok(tools.size >= 60, `expected at least 60 tools, got ${tools.size}`);
     for (const name of [
       "local_fs.read_image",
       "local_fs.apply_patch",
       "local_fs.watch_events",
+      "local_fs.append_base64",
       "local_exec.execute",
       "local_exec.cancel_job",
     ]) {
