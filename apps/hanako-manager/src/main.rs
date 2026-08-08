@@ -361,6 +361,15 @@ fn activation_address(install_dir: &Path) -> SocketAddrV4 {
 }
 
 fn app_icon_rgba(size: u32) -> Vec<u8> {
+    // Prefer the branded 32x32 icon (embedded RGBA generated from
+    // assets/hanako-local-bridge-512.png). Fall back to the legacy procedural
+    // “white H” glyph if the resource is missing.
+    if size == 32 {
+        const BRANDED: &[u8] = include_bytes!("../../../assets/app-icon-32.rgba");
+        if BRANDED.len() == 32 * 32 * 4 {
+            return BRANDED.to_vec();
+        }
+    }
     let mut pixels = vec![0u8; (size * size * 4) as usize];
     for y in 0..size {
         for x in 0..size {
