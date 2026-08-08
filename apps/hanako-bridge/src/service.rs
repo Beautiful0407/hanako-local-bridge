@@ -5,7 +5,7 @@ use std::{
     net::{Ipv4Addr, TcpListener},
     os::windows::process::CommandExt as _,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
@@ -196,6 +196,12 @@ fn install_task(runtime: &RuntimeConfig, task_name: &str) -> anyhow::Result<()> 
     // delete is safe.
     let _ = delete_task(task_name);
     let _ = stop_task(task_name);
+    // `/End` only ends the scheduled-task run instance; the bridge process
+    // itself is started by the task host (svchost) and survives `/End`, still
+    // holding ports 8787/8788. Terminate the bridge executable directly so the
+    // ports are actually released. The task is already deleted, so the
+    // per-minute trigger cannot relaunch it while we are installing.
+    kill_bridge_processes()?;
     wait_for_ports_released(
         &[
             runtime.config.filesystem.port,
@@ -265,6 +271,66 @@ fn start_task(task_name: &str) -> anyhow::Result<()> {
 
 fn stop_task(task_name: &str) -> anyhow::Result<()> {
     run_schtasks(["/End", "/TN", task_name])
+}
+
+/// Terminates every running hanako-bridge.exe process except the caller.
+///
+/// The scheduled task's `/End` stops the task run instance but does not
+/// reliably terminate the bridge process itself (started by the task host),
+/// so ports 8787/8788 stay occupied and install/repair times out waiting for
+/// them to be released. The caller must have deleted the scheduled task
+/// first, otherwise the per-minute trigger could relaunch the process while
+/// we are terminating it. The current process (the repair/install invocation
+/// itself) is excluded so the command can finish recreating the task.
+fn kill_bridge_processes() -> anyhow::Result<()> {
+    let self_pid = std::process::id();
+    // `tasklist /FI "IMAGENAME eq hanako-bridge.exe"` output: header line +
+    // rows of `"hanako-bridge.exe","<pid>",...`. Parse every PID and kill
+    // all but our own process.
+    let tasklist = Command::new("tasklist.exe")
+        .args(["/FI", "IMAGENAME eq hanako-bridge.exe", "/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
+    let text = decode_console_bytes(&tasklist.stdout);
+    let mut killed_any = false;
+    for pid in parse_bridge_pids(&text) {
+        if pid == self_pid {
+            continue;
+        }
+        let _ = Command::new("taskkill.exe")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        killed_any = true;
+    }
+    let _ = killed_any;
+    Ok(())
+}
+
+/// Parses `tasklist /FI "IMAGENAME eq hanako-bridge.exe" /FO CSV /NH` output
+/// into a list of PIDs. Each row looks like:
+/// `"hanako-bridge.exe","1234","Console","1","10,123 K"`.
+fn parse_bridge_pids(text: &str) -> Vec<u32> {
+    let mut pids = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split(',');
+        let _image = parts.next();
+        let Some(pid_field) = parts.next() else {
+            continue;
+        };
+        let pid_text = pid_field.trim_matches('"');
+        if let Ok(pid) = pid_text.parse::<u32>() {
+            pids.push(pid);
+        }
+    }
+    pids
 }
 
 fn delete_task(task_name: &str) -> anyhow::Result<()> {
@@ -730,6 +796,23 @@ mod tests {
         let started = Instant::now();
         wait_for_ports_released(&[port], Duration::from_secs(2)).unwrap();
         assert!(started.elapsed() >= Duration::from_millis(150));
+    }
+
+    #[test]
+    fn parses_bridge_pids_from_tasklist_csv() {
+        let sample = "\"hanako-bridge.exe\",\"1234\",\"Console\",\"1\",\"10,123 K\"\r\n\
+\"hanako-bridge.exe\",\"5678\",\"Console\",\"1\",\"8,001 K\"\r\n";
+        let pids = parse_bridge_pids(sample);
+        assert_eq!(pids, vec![1234, 5678]);
+    }
+
+    #[test]
+    fn parses_bridge_pids_skips_malformed_rows() {
+        let sample = "\"hanako-bridge.exe\",\"1234\",\"Console\",\"1\",\"10,123 K\"\r\n\
+not-a-csv-row\r\n\
+\"hanako-bridge.exe\",\"abc\",\"Console\",\"1\",\"8,001 K\"\r\n";
+        let pids = parse_bridge_pids(sample);
+        assert_eq!(pids, vec![1234]);
     }
 
     #[test]
