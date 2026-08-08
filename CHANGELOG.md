@@ -1,5 +1,27 @@
 # 变更记录
 
+## 2.0.5 - 2026-08-09（开发中）
+
+### 新功能
+
+- **全文内容搜索**：`local_fs.search` 支持 `content`（大小写不敏感关键词）与
+  `contentRegex`（正则），按文件内容匹配；BOM 自适应解码（UTF-8/UTF-16LE/BE
+  + 无 BOM UTF-16LE 启发式），二进制自动跳过；命中返回行号与摘要；
+  `contentMaxBytes` 控制单文件读取上限；与文件名/glob 过滤 AND 组合，
+  不传时行为完全向后兼容。
+- **事务性批量操作**：`local_fs.batch` 一次执行 ≤100 个 copy/move/delete
+  操作，全部预检通过后按序执行，任一步失败逆序回滚（copy 删目标、move
+  移回、delete 从回收站恢复），无半提交残留；路径固定顺序加锁防死锁。
+- **操作历史/审计**：`local_fs.history` 查询 `logs/mcp-audit.jsonl`（最新
+  优先），支持按工具/成败/时间过滤；文件操作审计事件新增触碰路径
+  （path/source/destination/batch 内路径）。
+- **回收站管理**：`local_fs.trash_list` / `trash_restore` / `trash_clear`。
+  删除操作写入 `.hana-trash-manifest.json` 记录原路径，可恢复到原始位置
+  或指定目标；原路径被占时拒绝并提示。
+- **授权根动态管理**：`local_fs.roots_add` / `roots_remove` 运行时管理
+  授权目录（read/read_write），持久化到 `data/access-control.json` 并
+  立即生效；重复授权拒绝，bootstrap 根不可撤销。
+
 ## 2.0.4 - 2026-08-09
 
 ### 新功能

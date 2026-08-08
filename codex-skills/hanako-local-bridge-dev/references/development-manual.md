@@ -457,6 +457,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 - `local_fs.append_base64` exists for chunked binary transfer: agents have a practical limit on
   base64 payload per call (~7.5KB); large files should be appended in chunks with `finalSha256`
   on the last chunk, or better, rendered locally on the target instead of transferring bytes.
+- Full-text search decoding must check BOMs BEFORE the NUL-density binary sniff: UTF-16 text is
+  ~50% NUL bytes and would be rejected as binary. BOM-less UTF-16LE heuristic runs before the
+  generic NUL gate too (decode_search_text in mcp.rs).
+- Batch rollback must carry the undo log out of the worker closure: returning only Err from a
+  spawn_blocking loses the completed steps' undo records, leaving partial state. Return
+  (index, message, Vec<Undo>) so the caller can roll back in reverse.
+- Trash entries need a manifest (`.hana-trash-manifest.json`) recording originalPath, otherwise
+  restore cannot know where a file came from. Full-trust trash lives in the deleted item's own
+  parent directory; management tools must mirror that (a directory arg means `dir/.hana-trash`,
+  a file arg means `parent/.hana-trash`).
+- Rust char literals containing backslashes get corrupted when written through bash heredocs
+  (\\ -> \ becomes an unterminated literal); write such code with the edit tool instead.
 
 ## Definition Of Done
 

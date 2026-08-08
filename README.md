@@ -8,24 +8,33 @@ Hanako Local Bridge 是云端 Hana Agent 与 Windows 电脑之间的本地桥。
 
 ## 特性
 
-**本地 MCP 服务（31 个工具）**
+**本地 MCP 服务（70+ 工具）**
 
-- 文件：读、写、追加、精确补丁（SHA256 并发校验）、搜索（glob/排除/超时）、目录游标分页、watch 文件变化、图片读取
+- 文件：读、写、追加、精确补丁（SHA256 并发校验）、目录游标分页、watch 文件变化、图片读取
+- 搜索：按文件名/glob 搜索 + **全文内容搜索**（关键词/正则，UTF-8/UTF-16 自适应，二进制自动跳过）
+- 批量：`local_fs.batch` **事务性批量操作**（copy/move/delete 要么全成功要么全回滚）
+- 历史：`local_fs.history` 查询操作审计（按工具/成败/时间过滤，含触碰路径）
+- 回收站：`local_fs.trash_list` / `trash_restore` / `trash_clear` 可恢复删除（记录原路径）
+- 权限：`local_fs.roots_add` / `roots_remove` 运行时动态管理授权目录（持久化、立即生效）
+- 分块传输：`local_fs.append_base64` 大文件分块追加 + SHA256 整体校验
 - 执行：PowerShell / Python 单步执行与异步任务（运行时、脚本 SHA256、参数、工作目录、超时全锁定），任务在独立隐藏 Runner 中运行，MCP 服务重启不中断
+- 桌面/浏览器自动化：截图、视觉理解、鼠标键盘、窗口控制、浏览器导航/点击/填表/取数（nuphus 系列）
 - 设备：稳定 deviceId、`device://<deviceId>/C:/...` 路径、离线队列（`queueIfOffline`）、在线状态
-- 写安全：路径级并发锁、覆盖前 SHA256 复核、旧文件备份 + 失败回滚
+- 写安全：路径级并发锁（固定顺序防死锁）、覆盖前 SHA256 复核、旧文件备份 + 失败回滚
 
 **云端接入**
 
 - 本地桥主动 WebSocket/WSS 连接云端，无需 SSH 反向隧道
 - Ed25519 设备身份 + 一次性 `claimToken` 认领，云端签发设备凭证
 - Linux Device Router 支持多设备路由与在线/离线状态
+- 管理器一键认领引导（打开认领页 → 登录 Hana → 自动绑定）
 
 **安全与更新**
 
 - 本地 MCP 接口 Bearer Token、Origin/Host 防护、请求体上限
 - 远程更新经 RSA 签名 + SHA256 + 大小三重校验，HTTP Range 断点续传
 - 本地授权页只监听回环地址，访问密钥不落盘
+- 全部工具调用写入审计日志（`logs/mcp-audit.jsonl`，10MB 轮转）
 
 ## 架构
 

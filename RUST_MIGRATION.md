@@ -54,11 +54,11 @@ tests/
 ### `hanako-bridge`
 
 - 使用 Axum 提供带 Token 保护的 MCP 端点与本地管理器 API
-- 注册全部 31 个本地文件与执行工具
+- 注册全部 70+ 个本地文件、执行与自动化工具（local_fs/local_exec/nuphus）
 - 支持 full-trust 与 approval 两种模式
 - 读写 UTF-8、UTF-16LE、UTF-16BE，并保留 BOM 状态
 - 并发写入使用原子替换与 SHA256 前置校验
-- 支持受限搜索、图片分块、轮询 watch、可恢复回收站、复制、移动、追加与精确补丁
+- 支持全文内容搜索（关键词/正则）、事务性批量操作（batch）、操作历史查询、可恢复回收站（list/restore/clear）、授权根动态管理（roots_add/remove）、分块二进制追加（append_base64）、图片分块、轮询 watch、复制、移动与精确补丁
 - 通过隔离的 job runner 执行已授权的 PowerShell 与 Python 脚本
 - 持久化任务，支持超时与取消，服务重启后恢复 runner 结果
 - 复用 Ed25519 云端身份，带心跳与退避重连云端 WebSocket
@@ -95,7 +95,7 @@ tests/
 
 - 在 Linux 上替代 `cloud/device-router.cjs`
 - 保留 `/health`、`/mcp` 与 `/devices/register`
-- 保持 34 个工具面、`device://<deviceId>/...` 选择、Token 转发与离线队列文件
+- 保持 70+ 个工具面、`device://<deviceId>/...` 选择、Token 转发与离线队列文件
 - 与 Node 路由器使用相同的 JSON 配置、缓存与队列路径
 
 ## 工具链

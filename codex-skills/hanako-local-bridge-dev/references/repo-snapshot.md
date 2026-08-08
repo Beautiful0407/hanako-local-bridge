@@ -4,7 +4,7 @@
 
 ## Repository
 
-- Captured: `2026-08-09T05:48:46.3067923+08:00`
+- Captured: `2026-08-09T07:29:56.5126715+08:00`
 - Root: `C:\Users\30456\AppData\Roaming\reasonix\global-workspace\hanako-local-bridge`
 - Remote: `https://github.com/Beautiful0407/hanako-local-bridge.git`
 - Branch: `main`
@@ -44,10 +44,10 @@ Live commit and dirty state are reported by `scripts/inspect-environment.ps1` an
 - Health 8788: `True`
 - Cloud: `active`
 - Cloud last error: ``
-- Cloud last connected: `2026-08-08T21:45:20.307261700+00:00`
-- Cloud last seen: `2026-08-08T21:48:40.675579400+00:00`
+- Cloud last connected: `2026-08-08T23:24:51.444809900+00:00`
+- Cloud last seen: `2026-08-08T23:29:51.549697+00:00`
 - Device ID: `laptop-hl78935t`
-- Bridge PID: `28712`
+- Bridge PID: `50396`
 - Main window handle: `0`
 - Manager count: `1`
 - Task exists/state: `True` / `Running`
