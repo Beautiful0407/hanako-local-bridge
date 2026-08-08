@@ -849,7 +849,15 @@ pub fn repair_shell_integration(install_root: &Path, version: &str) -> anyhow::R
     let icon_location = if icon.is_file() {
         icon.to_string_lossy().into_owned()
     } else {
-        shortcut_target.to_string_lossy().into_owned()
+        // Defensive: if the branded icon is missing, restore it from the
+        // installed Setup.exe payload if present, otherwise fall back to the
+        // shortcut target's own embedded resources.
+        let _ = restore_icon_from_setup(install_root, &icon);
+        if icon.is_file() {
+            icon.to_string_lossy().into_owned()
+        } else {
+            shortcut_target.to_string_lossy().into_owned()
+        }
     };
     let desktop = env::var_os("USERPROFILE")
         .map(PathBuf::from)
@@ -1024,6 +1032,54 @@ fn displaced_sidecar_path(destination: &Path) -> PathBuf {
     name.push('.');
     name.push_str(DISPLACED_SUFFIX);
     destination.with_file_name(name)
+}
+
+/// Best-effort: extract `assets/hanako-local-bridge.ico` from the embedded
+/// Setup.exe payload when the icon is missing from the install root.
+///
+/// The installer embeds the signed runtime ZIP; the icon lives inside it at
+/// `assets/hanako-local-bridge.ico`. This is a defensive recovery for the
+/// shortcut repair path so the branded icon survives even if a previous
+/// update left the assets directory empty.
+fn restore_icon_from_setup(install_root: &Path, icon: &Path) -> anyhow::Result<()> {
+    let setup = install_root.join("HanakoLocalBridge-Setup.exe");
+    if !setup.is_file() {
+        return Ok(());
+    }
+    let bytes = std::fs::read(&setup)?;
+    let Some(zip_start) = find_embedded_zip_start(&bytes) else {
+        return Ok(());
+    };
+    let reader = std::io::Cursor::new(&bytes[zip_start..]);
+    let mut archive = zip::ZipArchive::new(reader)?;
+    let mut found = None;
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let name = entry.name().to_string();
+        if name.ends_with("assets/hanako-local-bridge.ico")
+            || name.ends_with("assets\\hanako-local-bridge.ico")
+        {
+            let mut out = Vec::with_capacity(entry.size() as usize);
+            std::io::Read::read_to_end(&mut entry, &mut out)?;
+            found = Some(out);
+            break;
+        }
+    }
+    if let Some(data) = found {
+        if let Some(parent) = icon.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(icon, data)?;
+    }
+    Ok(())
+}
+
+/// Locates the embedded runtime ZIP appended to the Setup.exe payload by
+/// scanning for the ZIP local-file-header magic (`PK\x03\x04`).
+fn find_embedded_zip_start(bytes: &[u8]) -> Option<usize> {
+    bytes
+        .windows(4)
+        .position(|window| window == [0x50, 0x4B, 0x03, 0x04])
 }
 
 // Sweeps sidecar files left by a previous install whose running process has
