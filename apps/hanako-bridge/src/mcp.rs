@@ -177,7 +177,7 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
         tool(
             "local_fs.search",
             "Search local files",
-            "Search a bounded local directory tree by name and optional glob.",
+            "Search a bounded local directory tree by name and optional glob. When content or contentRegex is provided, also match file contents (text files only, BOM-aware). Returns contentMatches with line numbers for hits.",
             json!({
                 "path": path_property["path"],
                 "query": { "type": "string" },
@@ -186,7 +186,10 @@ pub fn tool_definitions(state: &AppState) -> Vec<Value> {
                 "maxDepth": { "type": "number" },
                 "limit": { "type": "number" },
                 "timeoutMs": { "type": "number" },
-                "maxVisited": { "type": "number" }
+                "maxVisited": { "type": "number" },
+                "content": { "type": "string" },
+                "contentRegex": { "type": "string" },
+                "contentMaxBytes": { "type": "number" }
             }),
             &["path"],
         ),
@@ -1934,6 +1937,118 @@ fn glob_matcher(pattern: Option<&str>) -> Result<Option<GlobMatcher>, BridgeErro
         .transpose()
 }
 
+/// Best-effort text decoding for content search.
+///
+/// Handles BOMs (UTF-8, UTF-16LE, UTF-16BE), BOM-less UTF-16LE (common on
+/// Windows), and falls back to UTF-8 with lossy conversion. Returns `None`
+/// for binary-looking content (NUL byte density) so search skips it.
+fn decode_search_text(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() {
+        return Some(String::new());
+    }
+    // BOMs are strong signals: handle them before the binary sniff, since
+    // UTF-16 text naturally has ~50% NUL bytes and would look binary.
+    if bytes.starts_with(&[0xff, 0xfe]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        return String::from_utf16(&units).ok();
+    }
+    if bytes.starts_with(&[0xfe, 0xff]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+            .collect();
+        return String::from_utf16(&units).ok();
+    }
+    let body = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) {
+        &bytes[3..]
+    } else {
+        bytes
+    };
+    // BOM-less UTF-16LE heuristic first: even length and a strong pattern of
+    // NUL-at-odd / ASCII-at-even positions identifies UTF-16 before the
+    // generic NUL-density gate (which would otherwise reject it as binary).
+    if body.len() >= 2 && body.len() % 2 == 0 {
+        let units: Vec<u16> = body
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        let probe_units = &units[..units.len().min(4096)];
+        let ascii_ish = probe_units
+            .iter()
+            .filter(|&&u| (0x20..=0x7e).contains(&u) || u == 0)
+            .count();
+        let pairs_ok = probe_units
+            .iter()
+            .filter(|&&u| (0x20..=0x7e).contains(&u))
+            .count()
+            * 10
+            >= probe_units.len() * 8;
+        if pairs_ok && ascii_ish * 10 >= probe_units.len() * 9 {
+            if let Ok(text) = String::from_utf16(&units) {
+                return Some(text);
+            }
+        }
+    }
+    // Binary sniff on the remaining content: NUL bytes in the first 8KB
+    // strongly imply non-text.
+    let probe = &body[..body.len().min(8192)];
+    let nul_count = probe.iter().filter(|&&b| b == 0).count();
+    if nul_count * 10 > probe.len() {
+        return None;
+    }
+    if let Ok(text) = std::str::from_utf8(body) {
+        return Some(text.to_string());
+    }
+    Some(String::from_utf8_lossy(body).into_owned())
+}
+
+/// Collects matching lines for content search.
+///
+/// `needle` is optional (case-insensitive substring); `regex` is optional
+/// (matched per line). Returns up to `max_matches` hit lines, each with its
+/// 1-based line number and a trimmed snippet (long lines truncated).
+fn content_hits(
+    text: &str,
+    needle: Option<&str>,
+    regex: Option<&regex::Regex>,
+    max_matches: usize,
+) -> Vec<Value> {
+    const SNIPPET_MAX: usize = 240;
+    const MAX_LINES: usize = 50_000;
+    let mut hits = Vec::new();
+    let needle_lower = needle.map(str::to_ascii_lowercase);
+    for (index, raw_line) in text.split('\n').enumerate() {
+        if index >= MAX_LINES {
+            break;
+        }
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let matches_needle = needle_lower
+            .as_ref()
+            .is_none_or(|needle| line.to_ascii_lowercase().contains(needle));
+        let matches_regex = regex.as_ref().is_none_or(|re| re.is_match(line));
+        if !matches_needle || !matches_regex {
+            continue;
+        }
+        let snippet = if line.chars().count() > SNIPPET_MAX {
+            let trimmed: String = line.chars().take(SNIPPET_MAX).collect();
+            format!("{trimmed}…")
+        } else {
+            line.to_string()
+        };
+        hits.push(json!({
+            "line": index + 1,
+            "snippet": snippet
+        }));
+        if hits.len() >= max_matches {
+            break;
+        }
+    }
+    hits
+}
+
 async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, BridgeError> {
     let resolved = state
         .resolver
@@ -1965,15 +2080,45 @@ async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, Brid
     let limit = argument_usize(arguments, "limit", 100, 1, 1000);
     let timeout_ms = argument_usize(arguments, "timeoutMs", 5000, 100, 30_000);
     let max_visited = argument_usize(arguments, "maxVisited", 10_000, 1, 100_000);
+    let content_needle = arguments
+        .get("content")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty());
+    let content_regex = match arguments
+        .get("contentRegex")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    {
+        Some(pattern) => Some(
+            regex::Regex::new(pattern)
+                .map_err(|error| BridgeError::tool("invalid_content_regex", error.to_string()))?,
+        ),
+        None => None,
+    };
+    let content_max_bytes = argument_usize(
+        arguments,
+        "contentMaxBytes",
+        1_048_576,
+        1024,
+        64 * 1024 * 1024,
+    );
+    let search_content = content_needle.is_some() || content_regex.is_some();
     let root = resolved.real.clone();
     let grant_id = resolved.grant.id.clone();
     let grant_relative = resolved.relative.clone();
+    let content_needle_owned = content_needle.map(str::to_string);
+    let content_regex_owned = content_regex.clone();
+    let search_content_owned = search_content;
+    let content_max_bytes_owned = content_max_bytes;
     let result = tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
         let mut results = Vec::new();
         let mut visited = 0usize;
         let mut skipped_links = 0usize;
         let mut visited_directories = HashSet::new();
+        let mut content_scanned = 0usize;
+        let mut content_skipped_large = 0usize;
+        let mut content_skipped_binary = 0usize;
         let mut timed_out = false;
         let mut budget_exceeded = false;
 
@@ -2029,13 +2174,42 @@ async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, Brid
                 Ok(metadata) => metadata,
                 Err(_) => continue,
             };
-            results.push(json!({
+            let mut content_matches = Vec::new();
+            if search_content_owned && metadata.is_file() && metadata.len() <= content_max_bytes_owned as u64 {
+                match std::fs::read(entry.path()) {
+                    Ok(bytes) => {
+                        content_scanned += 1;
+                        match decode_search_text(&bytes) {
+                            Some(text) => {
+                                content_matches = content_hits(
+                                    &text,
+                                    content_needle_owned.as_deref(),
+                                    content_regex_owned.as_ref(),
+                                    5,
+                                );
+                            }
+                            None => content_skipped_binary += 1,
+                        }
+                    }
+                    Err(_) => {}
+                }
+            } else if search_content_owned && metadata.is_file() && metadata.len() > content_max_bytes_owned as u64 {
+                content_skipped_large += 1;
+            }
+            if search_content_owned && content_matches.is_empty() {
+                continue;
+            }
+            let mut item = json!({
                 "name": entry.file_name().to_string_lossy(),
                 "path": public_path(&grant_id, &grant_relative.join(relative)),
                 "type": if metadata.is_dir() { "directory" } else if metadata.is_file() { "file" } else { "other" },
                 "size": metadata.len(),
                 "modifiedAt": metadata.modified().ok().map(chrono::DateTime::<chrono::Utc>::from).map(|value| value.to_rfc3339())
-            }));
+            });
+            if search_content_owned {
+                item["contentMatches"] = Value::Array(content_matches);
+            }
+            results.push(item);
             if results.len() >= limit {
                 break;
             }
@@ -2050,7 +2224,7 @@ async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, Brid
         if budget_exceeded {
             reasons.push("visit_budget");
         }
-        json!({
+        let mut output = json!({
             "query": if query.is_empty() { Value::Null } else { Value::String(query) },
             "results": results,
             "visited": visited,
@@ -2059,7 +2233,14 @@ async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, Brid
             "elapsedMs": started.elapsed().as_millis(),
             "truncated": !reasons.is_empty(),
             "truncationReasons": reasons
-        })
+        });
+        if search_content_owned {
+            output["content"] = Value::String(content_needle_owned.clone().unwrap_or_default());
+            output["contentScanned"] = json!(content_scanned);
+            output["contentSkippedLarge"] = json!(content_skipped_large);
+            output["contentSkippedBinary"] = json!(content_skipped_binary);
+        }
+        output
     })
     .await
     .map_err(|error| BridgeError::tool("search_failed", error.to_string()))?;
@@ -2286,4 +2467,91 @@ async fn stop_watch(state: &AppState, arguments: &Value) -> Result<Value, Bridge
         "watchId": watch_id,
         "closed": true
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn utf16le_bom(text: &str) -> Vec<u8> {
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in text.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn decode_search_text_handles_utf8_bom_and_utf16() {
+        assert_eq!(decode_search_text(b"plain").as_deref(), Some("plain"));
+        let mut utf8_bom = vec![0xef, 0xbb, 0xbf];
+        utf8_bom.extend_from_slice(b"hello");
+        assert_eq!(decode_search_text(&utf8_bom).as_deref(), Some("hello"));
+        let utf16 = utf16le_bom("你好 world");
+        assert_eq!(decode_search_text(&utf16).as_deref(), Some("你好 world"));
+    }
+
+    #[test]
+    fn decode_search_text_rejects_binary() {
+        // Realistic binary: dense NULs plus scattered high bytes.
+        let mut binary = Vec::with_capacity(4096);
+        for index in 0..4096 {
+            binary.push(if index % 3 == 0 {
+                0
+            } else {
+                (index % 251) as u8
+            });
+        }
+        assert_eq!(decode_search_text(&binary), None);
+    }
+
+    #[test]
+    fn decode_search_text_handles_bomless_utf16le() {
+        // 'A\0B\0' pattern without BOM
+        let bytes = b"A\0B\0C\0D\0E\0";
+        assert_eq!(decode_search_text(bytes).as_deref(), Some("ABCDE"));
+    }
+
+    #[test]
+    fn content_hits_matches_needle_and_regex() {
+        let text = "line one\nfind KEY here\nline three\nKEY again\n";
+        let hits = content_hits(text, Some("key"), None, 10);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0]["line"], 2);
+        assert!(
+            hits[0]["snippet"]
+                .as_str()
+                .unwrap()
+                .contains("find KEY here")
+        );
+
+        let regex = regex::Regex::new(r"KEY \w+").unwrap();
+        let hits = content_hits(text, None, Some(&regex), 10);
+        assert_eq!(hits.len(), 2);
+
+        // AND semantics: needle + regex both required
+        let hits = content_hits(text, Some("again"), Some(&regex), 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0]["line"], 4);
+    }
+
+    #[test]
+    fn content_hits_truncates_long_snippets_and_bounds_matches() {
+        let long_line = "x".repeat(500);
+        let text = format!("{long_line}\n{long_line}\n");
+        let hits = content_hits(&text, Some("x"), None, 1);
+        assert_eq!(hits.len(), 1);
+        let snippet = hits[0]["snippet"].as_str().unwrap();
+        assert!(snippet.ends_with('…'));
+        assert!(snippet.chars().count() <= 241);
+    }
+
+    #[test]
+    fn content_hits_handles_crlf() {
+        let text = "first\r\nsecond\r\n";
+        let hits = content_hits(text, Some("second"), None, 10);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0]["line"], 2);
+        assert_eq!(hits[0]["snippet"], "second");
+    }
 }
