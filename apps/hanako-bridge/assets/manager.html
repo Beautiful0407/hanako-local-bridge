@@ -227,6 +227,36 @@
         </div>
       </div>
 
+      <!-- 连接引导（云端未配置时显示） -->
+      <div class="claim-guide" id="connect-guide" hidden>
+        <h2>🌐 连接到你的 Hanako 服务器</h2>
+        <div class="steps">
+          <div class="step active">
+            <span class="step-num">1</span>
+            <span class="step-title">填写服务器地址</span>
+            <span class="step-desc">输入你的 Hanako 网页地址（或点击下方推荐按钮自动填入）。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <span class="step-title">自动连接</span>
+            <span class="step-desc">保存后本机自动连接你的服务器。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <span class="step-title">绑定设备</span>
+            <span class="step-desc">连接成功后点击“绑定设备”完成设备认领。</span>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:grid;gap:8px;max-width:560px">
+          <input id="connect-server-input" placeholder="例如：https://qhdhana.xyz" style="min-height:42px;font-size:15px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button type="button" id="connect-suggest" style="flex:1">使用推荐地址 qhdhana.xyz</button>
+            <button type="button" class="primary" id="connect-save" style="flex:1">保存并连接</button>
+          </div>
+          <div class="message" id="connect-message"></div>
+        </div>
+      </div>
+
       <!-- 绑定引导（等待绑定时显示） -->
       <div class="claim-guide" id="claim-guide" hidden>
         <h2>🔗 把本机连接到你的 Hana 账号</h2>
@@ -498,6 +528,7 @@ function renderCloudHero(cloudStatus) {
   const guide = document.getElementById("claim-guide");
   guide.hidden = status !== "pending_claim";
   if (status !== "pending_claim") hideClaimProgress();
+  updateConnectGuide();
 }
 
 function render(data) {
@@ -536,6 +567,77 @@ function updateClaimButton(cloudStatus) {
   const button = document.getElementById("claim-button");
   if (!button) return;
   button.hidden = cloudStatus !== "pending_claim";
+}
+
+// Shows the "connect to your server" guide when the configured cloud URL is
+// still the placeholder (your-server.example.com) or missing entirely.
+const PLACEHOLDER_SERVERS = ["your-server.example.com", "YOUR_SERVER_IP"];
+function isPlaceholderServer(url) {
+  if (!url) return true;
+  const host = String(url).replace(/^wss?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
+  return PLACEHOLDER_SERVERS.some(placeholder => host.includes(placeholder));
+}
+function updateConnectGuide() {
+  const guide = document.getElementById("connect-guide");
+  if (!guide) return;
+  const cloudUrl = snapshot?.cloud?.cloudUrl || snapshot?.settings?.cloudUrl || "";
+  guide.hidden = !isPlaceholderServer(cloudUrl);
+  if (!guide.hidden) {
+    document.getElementById("connect-server-input").value = cloudUrl.startsWith("wss://") || cloudUrl.startsWith("ws://") ? cloudUrl : "";
+  }
+}
+function normalizeServerInput(raw) {
+  let value = String(raw || "").trim();
+  if (!value) return "";
+  if (!/^wss?:\/\//i.test(value)) {
+    value = (value.startsWith("https://") ? "wss://" : "ws://") + value.replace(/^https?:\/\//i, "");
+  }
+  return value.replace(/\/+$/, "") + "/local-bridge/connect";
+}
+function manifestForServer(cloudUrl) {
+  const https = cloudUrl.replace(/^wss?:\/\//i, "https://").replace(/\/local-bridge\/connect$/, "");
+  return https + "/local-bridge/releases/alpha/update-manifest.json";
+}
+async function saveConnectGuide() {
+  const message = document.getElementById("connect-message");
+  const button = document.getElementById("connect-save");
+  const raw = document.getElementById("connect-server-input").value;
+  const cloudUrl = normalizeServerInput(raw);
+  if (!cloudUrl) {
+    message.textContent = "请输入服务器地址，或点击“使用推荐地址”。";
+    message.className = "message error";
+    return;
+  }
+  button.disabled = true;
+  try {
+    await api("/api/manager/settings", {
+      method: "POST",
+      body: JSON.stringify({
+        deviceId: snapshot.settings.deviceId,
+        deviceName: snapshot.settings.deviceName,
+        trustMode: snapshot.settings.trustMode,
+        cloudEnabled: true,
+        mcpPort: snapshot.settings.mcpPort,
+        approvalPort: snapshot.settings.approvalPort,
+        cloudUrl,
+        updateManifest: manifestForServer(cloudUrl),
+        roots: snapshot.settings.roots
+      })
+    });
+    message.textContent = "已保存，正在重启服务并连接...";
+    message.className = "message";
+    await waitForServiceRecovery("settings", "connect-message");
+    if (snapshot?.cloud?.status === "pending_claim") {
+      document.getElementById("connect-guide").hidden = true;
+      document.getElementById("claim-guide").hidden = false;
+      document.getElementById("claim-button").hidden = false;
+    }
+  } catch (error) {
+    message.textContent = friendlyError(error);
+    message.className = "message error";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function showClaimProgress(message) {
@@ -794,6 +896,16 @@ document.getElementById("settings-form").onsubmit = async event => {
       await waitForServiceRecovery("settings", "settings-message");
     }
   } catch (error) { setMessage("settings-message", friendlyError(error), "error"); }
+};
+
+document.getElementById("connect-suggest").onclick = () => {
+  document.getElementById("connect-server-input").value = "qhdhana.xyz";
+  document.getElementById("connect-message").textContent = "已填入推荐地址，点击“保存并连接”。";
+  document.getElementById("connect-message").className = "message";
+};
+document.getElementById("connect-save").onclick = saveConnectGuide;
+document.getElementById("connect-server-input").onkeydown = event => {
+  if (event.key === "Enter") saveConnectGuide();
 };
 
 refresh();
