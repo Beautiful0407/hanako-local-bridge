@@ -671,7 +671,7 @@ fn argument_path(arguments: &Value) -> Result<&str, BridgeError> {
 
 /// Extracts the paths touched by a file-operation tool call for audit.
 /// Returns `None` for tools without path semantics (execution, nuphus).
-fn audit_paths_for(name: &str, arguments: &Value) -> Option<Vec<Value>> {
+fn audit_paths_for(_name: &str, arguments: &Value) -> Option<Vec<Value>> {
     let mut paths = Vec::new();
     for key in ["path", "source", "destination"] {
         if let Some(value) = arguments.get(key).and_then(Value::as_str) {
@@ -2225,7 +2225,7 @@ async fn trash_restore(state: &AppState, arguments: &Value) -> Result<Value, Bri
     let _guard = state.lock_path(&destination).await;
     let trash_source_owned = trash_source.clone();
     let destination_owned = destination.clone();
-    let result = tokio::task::spawn_blocking(move || -> Result<(), BridgeError> {
+    tokio::task::spawn_blocking(move || -> Result<(), BridgeError> {
         if let Some(parent) = destination_owned.parent()
             && !parent.is_dir()
         {
@@ -2246,7 +2246,6 @@ async fn trash_restore(state: &AppState, arguments: &Value) -> Result<Value, Bri
     })
     .await
     .map_err(|error| BridgeError::tool("restore_failed", error.to_string()))??;
-    let _ = result;
     Ok(content_json(json!({
         "restored": destination.to_string_lossy(),
         "trashName": trash_name
@@ -2259,7 +2258,7 @@ async fn trash_clear(state: &AppState, arguments: &Value) -> Result<Value, Bridg
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| BridgeError::tool("path_required", "path is required"))?;
-    let trash_root = trash_root_for(state, &path_input).await?;
+    let trash_root = trash_root_for(state, path_input).await?;
     if !trash_root.is_dir() {
         return Ok(content_json(json!({"path": trash_root, "cleared": 0})));
     }
@@ -2386,8 +2385,6 @@ struct PreparedBatchOp {
     kind: BatchOpKind,
     source: PathBuf,
     destination: Option<PathBuf>,
-    // For delete: the trash destination path (used for restore on rollback).
-    trash_destination: Option<PathBuf>,
 }
 
 struct BatchUndo {
@@ -2468,7 +2465,6 @@ async fn run_batch(state: &AppState, arguments: &Value) -> Result<Value, BridgeE
             kind,
             source: source.real,
             destination,
-            trash_destination: None,
         });
     }
 
@@ -2497,7 +2493,7 @@ async fn run_batch(state: &AppState, arguments: &Value) -> Result<Value, BridgeE
     // Execute with undo journal.
     let mut undo_log: Vec<BatchUndo> = Vec::new();
     let mut results = Vec::with_capacity(prepared.len());
-    let mut committed = false;
+    let committed;
     let mut failed_index = None;
     let mut failure_message = String::new();
 
@@ -2508,7 +2504,6 @@ async fn run_batch(state: &AppState, arguments: &Value) -> Result<Value, BridgeE
     // The actual file work happens on the blocking pool; the undo log is
     // filled synchronously as each step succeeds.
     {
-        let create_parents = create_parents;
         let moved = tokio::task::spawn_blocking(
             move || -> Result<Vec<BatchStepResult>, (usize, String, Vec<BatchUndo>)> {
                 let mut results = Vec::with_capacity(execution.len());
@@ -2840,10 +2835,11 @@ fn decode_search_text(bytes: &[u8]) -> Option<String> {
             .count()
             * 10
             >= probe_units.len() * 8;
-        if pairs_ok && ascii_ish * 10 >= probe_units.len() * 9 {
-            if let Ok(text) = String::from_utf16(&units) {
-                return Some(text);
-            }
+        if pairs_ok
+            && ascii_ish * 10 >= probe_units.len() * 9
+            && let Ok(text) = String::from_utf16(&units)
+        {
+            return Some(text);
         }
     }
     // Binary sniff on the remaining content: NUL bytes in the first 8KB
@@ -3030,22 +3026,19 @@ async fn search_files(state: &AppState, arguments: &Value) -> Result<Value, Brid
             };
             let mut content_matches = Vec::new();
             if search_content_owned && metadata.is_file() && metadata.len() <= content_max_bytes_owned as u64 {
-                match std::fs::read(entry.path()) {
-                    Ok(bytes) => {
-                        content_scanned += 1;
-                        match decode_search_text(&bytes) {
-                            Some(text) => {
-                                content_matches = content_hits(
-                                    &text,
-                                    content_needle_owned.as_deref(),
-                                    content_regex_owned.as_ref(),
-                                    5,
-                                );
-                            }
-                            None => content_skipped_binary += 1,
+                if let Ok(bytes) = std::fs::read(entry.path()) {
+                    content_scanned += 1;
+                    match decode_search_text(&bytes) {
+                        Some(text) => {
+                            content_matches = content_hits(
+                                &text,
+                                content_needle_owned.as_deref(),
+                                content_regex_owned.as_ref(),
+                                5,
+                            );
                         }
+                        None => content_skipped_binary += 1,
                     }
-                    Err(_) => {}
                 }
             } else if search_content_owned && metadata.is_file() && metadata.len() > content_max_bytes_owned as u64 {
                 content_skipped_large += 1;
