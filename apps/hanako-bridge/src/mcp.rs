@@ -589,6 +589,25 @@ pub async fn handle_payload(state: Arc<AppState>, payload: Value) -> Value {
     handle_message(state, payload).await.unwrap_or(Value::Null)
 }
 
+/// MCP 协议版本协商：客户端请求的版本如果在我们支持列表内就原样回显，
+/// 否则回退到稳定基线（2025-06-18）。2026-07-28 是 streamable-http
+/// stateless 时代版本，官方 Hana 客户端作为 preferred 版本使用。
+const MCP_SUPPORTED_VERSIONS: &[&str] = &["2026-07-28", "2025-06-18", "2025-03-26", "2024-11-05"];
+
+fn mcp_negotiated_protocol(requested: Option<&str>) -> &'static str {
+    match requested {
+        Some(version) if MCP_SUPPORTED_VERSIONS.contains(&version) => {
+            // 列表内是静态字符串，直接返回静态引用
+            MCP_SUPPORTED_VERSIONS
+                .iter()
+                .find(|candidate| **candidate == version)
+                .copied()
+                .unwrap_or("2025-06-18")
+        }
+        _ => "2025-06-18",
+    }
+}
+
 async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
     let id = message.get("id").cloned().unwrap_or(Value::Null);
     let method = message
@@ -599,11 +618,18 @@ async fn handle_message(state: Arc<AppState>, message: Value) -> Option<Value> {
         return None;
     }
     let result = match method {
+        "server/discover" => Ok(json!({
+            "supportedVersions": [
+                "2026-07-28",
+                "2025-06-18",
+                "2025-03-26",
+                "2024-11-05"
+            ]
+        })),
         "initialize" => Ok(json!({
-            "protocolVersion": message
-                .pointer("/params/protocolVersion")
-                .and_then(Value::as_str)
-                .unwrap_or("2025-06-18"),
+            "protocolVersion": mcp_negotiated_protocol(
+                message.pointer("/params/protocolVersion").and_then(Value::as_str)
+            ),
             "capabilities": { "tools": { "listChanged": true } },
             "serverInfo": {
                 "name": "hana-local-fs-mcp",
@@ -1013,11 +1039,15 @@ async fn list_directory(state: &AppState, arguments: &Value) -> Result<Value, Br
     let mut entries = Vec::with_capacity(selected.len());
     for name in selected {
         let relative = resolved.relative.join(name);
-        let child = state.resolver.resolve(
-            &public_path(&resolved.grant.id, &relative),
-            AccessMode::Read,
-            false,
-        )?;
+        // 子项不需要再次通过 resolver:父目录已通过授权检查,子项必在其内。
+        // 直接构造 ResolvedPath 可避免 full_trust 动态盘 grant(drive-c)
+        // 不在 grants 表里导致 local:// 二次 resolve 失败的问题。
+        let child = ResolvedPath {
+            grant: Arc::clone(&resolved.grant),
+            real: resolved.real.join(name),
+            relative,
+            exists: true,
+        };
         entries.push(stat_value(&child, false).await?);
     }
     let next_cursor = if start + selected.len() < names.len() {
@@ -3400,5 +3430,19 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0]["line"], 2);
         assert_eq!(hits[0]["snippet"], "second");
+    }
+
+    #[test]
+    fn mcp_protocol_negotiation_echoes_supported_versions() {
+        assert_eq!(mcp_negotiated_protocol(Some("2026-07-28")), "2026-07-28");
+        assert_eq!(mcp_negotiated_protocol(Some("2025-06-18")), "2025-06-18");
+        assert_eq!(mcp_negotiated_protocol(Some("2024-11-05")), "2024-11-05");
+        // Unknown or absent falls back to the stable baseline.
+        assert_eq!(mcp_negotiated_protocol(Some("2099-01-01")), "2025-06-18");
+        assert_eq!(mcp_negotiated_protocol(None), "2025-06-18");
+        // The discover list includes every version we can negotiate.
+        assert_eq!(MCP_SUPPORTED_VERSIONS.len(), 4);
+        assert!(MCP_SUPPORTED_VERSIONS.contains(&"2026-07-28"));
+        assert!(MCP_SUPPORTED_VERSIONS.contains(&"2025-06-18"));
     }
 }
