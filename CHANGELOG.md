@@ -1,5 +1,21 @@
 # 变更记录
 
+## 2.0.7 - 2026-08-10
+
+### 新功能
+
+- **官方 OpenHanako 兼容（远程 MCP）**:桥新增 `server/discover` 方法并支持
+  现代 MCP stateless 协议版本协商（2026-07-28 / 2025-06-18 / 2025-03-26 /
+  2024-11-05）,官方 OpenHanako(0.446.6+) 可把桥注册为远程 MCP
+  connector(streamable-http),让官方云端 AI 直接调用桥的全部工具。
+  详见 README「接入官方 OpenHanako 云端」章节。
+
+### 修复
+
+- **local_fs.list 绝对路径子项解析**:full-trust 模式下对盘符内任意目录
+  列目录时,子项不再二次走 `local://drive-x` 解析(动态盘 grant 不在
+  grants 表中会误报 `grant_not_found`),改为从父授权直接构造子路径。
+
 ## 2.0.6 - 2026-08-09
 
 ### 新功能

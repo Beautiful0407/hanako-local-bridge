@@ -96,6 +96,30 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-insta
 
 未填写的字段（`tunnel`、`service`、`storage`、重连/心跳参数等）会自动使用内置默认值；`tunnel` 仅为旧版 SSH 反向隧道兼容保留，新部署无需配置。
 
+### 接入官方 OpenHanako 云端（远程 MCP）
+
+桥自带标准 MCP HTTP 端点（`POST /mcp`，Bearer token 鉴权），官方 OpenHanako（`liliMozi/openhanako`，0.446.6+）支持把桥注册为**远程 MCP connector**（streamable-http / 2026-07-28 stateless 协议），让官方云端的 AI 直接调用桥的全部工具（local_fs.* / local_exec.* / nuphus.*）。
+
+**桥侧**（本地电脑）：
+
+1. 确认桥在运行，MCP 端点监听在 `http://127.0.0.1:8787/mcp`（默认端口可用 `LOCAL_FS_MCP_HOST/PORT` 覆盖）。
+2. 取 MCP token：`<安装目录>\data\approval-token.txt`（首次启动自动生成）。
+3. 把桥的 MCP 端点暴露到公网（任选一种）：
+   - 反向代理（nginx / Caddy）：`location /mcp { proxy_pass http://127.0.0.1:8787; proxy_http_version 1.1; }`，配 TLS；
+   - frp / cloudflared / ngrok 等隧道，把本地 8787 映射为公网 HTTPS 地址；
+   - 公网地址形如 `https://你的域名/mcp`。
+
+**官方云端侧**（服务器）：
+
+1. 登录官方 OpenHanako 管理界面，进入 **MCP 设置**；
+2. 添加 connector：`transport = streamable-http`，`url = https://你的域名/mcp`，`authorizationToken = <approval-token.txt 内容>`；
+3. 保存并启动 connector，工具列表自动刷新（80+ 工具）。
+4. 在会话中调用 `local_fs.*` / `local_exec.*` 即可操作桥所在电脑的文件。
+
+**安全提示**：仅暴露 `/mcp` 路径；token 按需轮换（删除 `approval-token.txt` 重启桥即可重新生成）；桥的 roots/approval/审计权限控制对远程调用同样生效。
+
+> 注意：此模式面向**官方 OpenHanako 云端**（远端 MCP）。**私人云端线**（`openhanako-cloud`）使用 `wss://…/local-bridge/connect` 主动连接 + 认领协议，两者独立、可共存。
+
 ### 安装为 Windows 后台服务
 
 Rust 版安装器会创建计划任务并直接启动 `hanako-bridge.exe`，无需额外服务脚本。安装包由 [`apps/hanako-installer`](./apps/hanako-installer) 生成。
