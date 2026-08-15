@@ -18,6 +18,27 @@ pub const OFFICIAL_ALPHA_UPDATE_MANIFEST: &str =
     "https://your-server.example.com/local-bridge/releases/alpha/update-manifest.json";
 pub const OFFICIAL_CLAIM_URL: &str = "https://your-server.example.com/desktop/";
 
+/// Returns whether a cloud URL is the installer placeholder rather than a real server.
+///
+/// Keep this check host-based and exact: custom deployments may use any real path or
+/// port, and those must continue to be treated as configured URLs.
+pub fn is_placeholder_cloud_url(cloud_url: &str) -> bool {
+    let trimmed = cloud_url.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let Ok(parsed) = url::Url::parse(trimmed) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    matches!(
+        host.to_ascii_lowercase().as_str(),
+        "your-server.example.com" | "your_server_ip"
+    )
+}
+
 /// Derives the browser claim page URL from the cloud WebSocket URL.
 ///
 /// The device is claimed in a logged-in Hana web session at `<host>/desktop/`,
@@ -604,5 +625,22 @@ mod tests {
             claim_url_from_cloud("ftp://example.test/x"),
             OFFICIAL_CLAIM_URL
         );
+    }
+
+    #[test]
+    fn recognizes_only_real_installer_placeholder_hosts() {
+        assert!(is_placeholder_cloud_url(OFFICIAL_CLOUD_URL));
+        assert!(is_placeholder_cloud_url(LEGACY_CLOUD_URL));
+        assert!(is_placeholder_cloud_url("  "));
+        assert!(is_placeholder_cloud_url(
+            "wss://your-server.example.com:8443/custom-path"
+        ));
+        assert!(!is_placeholder_cloud_url(
+            "wss://your-server.example.com.evil.test/local-bridge/connect"
+        ));
+        assert!(!is_placeholder_cloud_url(
+            "wss://qhdhana.xyz/local-bridge/connect"
+        ));
+        assert!(!is_placeholder_cloud_url("not a URL"));
     }
 }

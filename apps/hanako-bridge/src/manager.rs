@@ -15,7 +15,7 @@ use axum::{
 use hanako_bridge_core::{
     config::{
         RootConfig, RootMode, claim_url_from_cloud, effective_update_channel,
-        effective_update_manifest,
+        effective_update_manifest, is_placeholder_cloud_url,
     },
     decode_console_bytes,
     device::clean_device_id,
@@ -170,14 +170,18 @@ fn cloud_check(cloud: &Value, cloud_url: &str) -> Value {
     let state = cloud["status"].as_str().unwrap_or("offline");
     let status = match state {
         "active" | "disabled" => "pass",
-        "connecting" | "authenticating" | "pending_claim" => "warning",
+        "connecting" | "authenticating" | "pending_claim" | "not_configured" => "warning",
         _ => "error",
     };
     json!({
         "code": "cloud",
         "status": status,
         "state": state,
-        "detail": cloud_url,
+        "detail": if state == "not_configured" {
+            "请在概览页填写真实云端地址"
+        } else {
+            cloud_url
+        },
         "lastError": cloud["lastError"]
     })
 }
@@ -323,6 +327,12 @@ async fn install_update(
 async fn open_claim(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     if !authorized(&state, &headers) {
         return forbidden();
+    }
+    if is_placeholder_cloud_url(&state.runtime.config.cloud.url) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "cloud URL is not configured" })),
+        );
     }
     let url = claim_url_from_cloud(&state.runtime.config.cloud.url);
     // `cmd /C start "" <url>` opens the default browser. The empty "" is the
@@ -567,6 +577,7 @@ mod tests {
     #[test]
     fn manager_page_localizes_protocol_statuses_and_diagnostics() {
         assert!(MANAGER_HTML.contains("active: \"已连接\""));
+        assert!(MANAGER_HTML.contains("not_configured: \"未配置\""));
         assert!(MANAGER_HTML.contains("full: \"完全信任\""));
         assert!(MANAGER_HTML.contains("service_task: \"后台任务\""));
         assert!(MANAGER_HTML.contains("pass: \"正常\""));
@@ -596,6 +607,10 @@ mod tests {
             &json!({"status": "disabled", "lastError": null}),
             "wss://example.test/connect",
         );
+        let not_configured = cloud_check(
+            &json!({"status": "not_configured", "lastError": null}),
+            "wss://your-server.example.com/local-bridge/connect",
+        );
         let offline = cloud_check(
             &json!({"status": "offline", "lastError": "connection refused"}),
             "wss://example.test/connect",
@@ -603,10 +618,13 @@ mod tests {
         assert_eq!(connecting["status"], "warning");
         assert_eq!(authenticating["status"], "warning");
         assert_eq!(disabled["status"], "pass");
+        assert_eq!(not_configured["status"], "warning");
+        assert_eq!(not_configured["detail"], "请在概览页填写真实云端地址");
         assert_eq!(offline["status"], "error");
         assert_eq!(offline["lastError"], "connection refused");
         assert_eq!(overall_status(&[connecting]), "warning");
         assert_eq!(overall_status(&[disabled]), "healthy");
+        assert_eq!(overall_status(&[not_configured]), "warning");
         assert_eq!(overall_status(&[offline]), "error");
     }
 }

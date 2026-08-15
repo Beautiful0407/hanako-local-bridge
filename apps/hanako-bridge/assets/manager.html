@@ -381,6 +381,7 @@ let recoveryGeneration = 0;
 const CLOUD_STATUS_TEXT = Object.freeze({
   active: "已连接",
   pending_claim: "等待绑定",
+  not_configured: "未配置",
   connecting: "正在连接",
   authenticating: "正在验证",
   offline: "未连接",
@@ -390,6 +391,7 @@ const CLOUD_STATUS_TEXT = Object.freeze({
 const CLOUD_STATUS_SUBTITLE = Object.freeze({
   active: "云端可以访问本机的文件与执行能力。",
   pending_claim: "本机已连上云端，绑定后云端就能访问本机文件。",
+  not_configured: "尚未配置真实云端地址，请在下方引导中填写服务器地址。",
   connecting: "正在建立与云端的连接，请稍候...",
   authenticating: "正在验证设备身份...",
   offline: "尚未连接云端。如果刚刚安装，请检查网络后点击“检测并修复”。",
@@ -399,6 +401,7 @@ const CLOUD_STATUS_SUBTITLE = Object.freeze({
 const CLOUD_HERO_ICON = Object.freeze({
   active: "✅",
   pending_claim: "🔗",
+  not_configured: "⚙",
   connecting: "🔄",
   authenticating: "🛡",
   offline: "⚠",
@@ -507,7 +510,7 @@ function renderCloudHero(cloudStatus) {
   const icon = document.getElementById("cloud-hero-icon");
   icon.textContent = CLOUD_HERO_ICON[status] || "☁";
   const stateClass = status === "active" || status === "disabled" ? "state-pass"
-    : status === "pending_claim" || status === "connecting" || status === "authenticating" ? "state-warning"
+    : status === "pending_claim" || status === "not_configured" || status === "connecting" || status === "authenticating" ? "state-warning"
     : "state-error";
   icon.className = `cloud-hero-icon ${stateClass}`;
   text("cloud-hero-status", cloudStatusText(status));
@@ -724,7 +727,7 @@ async function waitForServiceRecovery(action, messageId = "diagnostic-message") 
   }
 }
 function cloudRecoveryComplete(status) {
-  return ["active", "pending_claim", "disabled"].includes(status);
+  return ["active", "pending_claim", "not_configured", "disabled"].includes(status);
 }
 
 async function loadLogs() {

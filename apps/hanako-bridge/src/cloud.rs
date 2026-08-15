@@ -13,7 +13,7 @@ use ed25519_dalek::{
 use futures_util::{SinkExt, StreamExt};
 use hanako_bridge_core::{
     BridgeResult, DeviceIdentity,
-    config::CloudConfig,
+    config::{CloudConfig, is_placeholder_cloud_url},
     store::{load_json, write_json_atomic},
 };
 use pkcs8::LineEnding;
@@ -91,16 +91,21 @@ impl CloudConnector {
     }
 
     fn with_initial_status(self) -> Self {
-        if !self.config.enabled
-            && let Ok(mut state) = self.state.try_write()
-        {
-            state.status = "disabled".to_string();
+        if let Ok(mut state) = self.state.try_write() {
+            state.status = if !self.config.enabled {
+                "disabled"
+            } else if is_placeholder_cloud_url(&self.config.url) {
+                "not_configured"
+            } else {
+                "offline"
+            }
+            .to_string();
         }
         self
     }
 
     pub fn start(self: &Arc<Self>) {
-        if !self.config.enabled {
+        if !self.config.enabled || is_placeholder_cloud_url(&self.config.url) {
             return;
         }
         let connector = Arc::clone(self);
@@ -172,6 +177,9 @@ impl CloudConnector {
     }
 
     async fn connect_once(&self) -> anyhow::Result<()> {
+        if is_placeholder_cloud_url(&self.config.url) {
+            anyhow::bail!("cloud.url is not configured");
+        }
         if !self.config.url.starts_with("ws://") && !self.config.url.starts_with("wss://") {
             anyhow::bail!("cloud.url must use ws:// or wss://");
         }
@@ -441,7 +449,7 @@ fn random_token(bytes: usize) -> BridgeResult<String> {
 mod tests {
     use super::*;
     use futures_util::{SinkExt, StreamExt};
-    use hanako_bridge_core::DeviceIdentity;
+    use hanako_bridge_core::{DeviceIdentity, config::OFFICIAL_CLOUD_URL};
     use std::env;
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
@@ -540,6 +548,33 @@ mod tests {
         let status = connector.client_identity().await;
         assert_eq!(status["status"], "active");
         server.await.unwrap();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn placeholder_cloud_url_stays_not_configured() {
+        let root = env::temp_dir().join(format!("hanako-placeholder-test-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&root).await.unwrap();
+        let connector = CloudConnector::new(
+            CloudConfig {
+                enabled: true,
+                url: OFFICIAL_CLOUD_URL.to_string(),
+                reconnect_min_seconds: 2,
+                reconnect_max_seconds: 4,
+                heartbeat_seconds: 60,
+            },
+            root.join("data"),
+            device(),
+            "2.0.0-test",
+            Weak::new(),
+        )
+        .await
+        .unwrap();
+
+        let identity = connector.client_identity().await;
+        assert_eq!(identity["status"], "not_configured");
+        let error = connector.connect_once().await.unwrap_err().to_string();
+        assert_eq!(error, "cloud.url is not configured");
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 

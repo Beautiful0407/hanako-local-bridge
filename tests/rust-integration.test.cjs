@@ -9,7 +9,7 @@ const projectDir = path.resolve(__dirname, "..");
 const bridgeExe =
   process.env.HANAKO_RUST_BRIDGE_EXE ||
   path.join(projectDir, "target", "debug", "hanako-bridge.exe");
-const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.4";
+const expectedVersion = process.env.HANAKO_RUST_EXPECTED_VERSION || "2.0.8";
 
 async function checkedFetch(label, url, options) {
   try {
@@ -318,9 +318,34 @@ async function run() {
     );
     assert.equal(identityPreflight.status, 200);
     assert.equal(
+      identityPreflight.headers.get("access-control-allow-origin"),
+      "https://your-server.example.com",
+    );
+    assert.equal(
       identityPreflight.headers.get("access-control-allow-private-network"),
       "true",
     );
+
+    const identity = await checkedFetch(
+      "client identity",
+      `http://127.0.0.1:${approvalPort}/api/client-identity`,
+      { headers: { Origin: "https://your-server.example.com" } },
+    );
+    assert.equal(identity.status, 200);
+    assert.equal(
+      identity.headers.get("access-control-allow-origin"),
+      "https://your-server.example.com",
+    );
+    const rejectedIdentity = await checkedFetch(
+      "client identity rejected origin",
+      `http://127.0.0.1:${approvalPort}/api/client-identity`,
+      {
+        method: "OPTIONS",
+        headers: { Origin: "https://example.invalid" },
+      },
+    );
+    assert.equal(rejectedIdentity.status, 403);
+    assert.equal(rejectedIdentity.headers.get("access-control-allow-origin"), null);
 
     const approvalHealth = await checkedFetch(
       "approval health",
