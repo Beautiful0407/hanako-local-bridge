@@ -96,6 +96,8 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tests\rust-insta
 
 未填写的字段（`tunnel`、`service`、`storage`、重连/心跳参数等）会自动使用内置默认值；`tunnel` 仅为旧版 SSH 反向隧道兼容保留，新部署无需配置。
 
+> `your-server.example.com` 只是安装示例，并不是可连接的云端。请在管理器的“连接到云”引导中填写真实 `wss://<你的域名>/local-bridge/connect` 地址；2.0.8 会将该示例地址明确显示为“未配置”，不会再把它报告为 DNS 连接异常。
+
 ### 接入官方 OpenHanako 云端（远程 MCP）
 
 桥自带标准 MCP HTTP 端点（`POST /mcp`，Bearer token 鉴权），官方 OpenHanako（`liliMozi/openhanako`，0.446.6+）支持把桥注册为**远程 MCP connector**（streamable-http / 2026-07-28 stateless 协议），让官方云端的 AI 直接调用桥的全部工具（local_fs.* / local_exec.* / nuphus.*）。
