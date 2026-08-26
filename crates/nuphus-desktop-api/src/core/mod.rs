@@ -327,6 +327,13 @@ pub struct SessionManager {
 }
 
 #[cfg(feature = "http-server")]
+impl Default for SessionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "http-server")]
 impl SessionManager {
     pub fn new() -> Self {
         Self {
@@ -334,7 +341,7 @@ impl SessionManager {
         }
     }
 
-    pub async fn create(&mut self, spec: TargetSpec) -> Result<SessionHandle> {
+    pub async fn create(&mut self, _spec: TargetSpec) -> Result<SessionHandle> {
         let id = Uuid::new_v4();
         let now = Utc::now();
 

@@ -168,6 +168,7 @@ impl Locator {
     }
 
     /// Sliding window difference computation
+    #[allow(clippy::too_many_arguments)] // 像素窗口比较的坐标/尺寸参数均为原始标量，包装结构体不减少信息量
     fn window_diff(
         frame_pixels: &[u8],
         fw: u32,
